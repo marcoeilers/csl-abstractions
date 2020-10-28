@@ -7,9 +7,6 @@ Require Import PermSolver.
 Require Import Permutation.
 Require Import PermutationTactic.
 Require Import Prelude.
-Require Import Process.
-Require Import ProcMap.
-Require Import ProcMapSolver.
 Require Import Programs.
 Require Import QArith Qcanon.
 
@@ -24,12 +21,9 @@ Module Type Assertions
   (domains : Domains)
   (heaps : Heaps domains)
   (hsolver : HeapSolver domains heaps)
-  (procs : Processes domains)
-  (procmaps : ProcMaps domains heaps procs)
-  (progs : Programs domains heaps procs procmaps)
-  (pmsolver : ProcMapSolver domains heaps procs procmaps).
+  (progs : Programs domains heaps).
 
-Export domains heaps hsolver procs procmaps pmsolver progs.
+Export domains heaps hsolver progs.
 
 
 (** ** Statics *)
@@ -42,21 +36,13 @@ Inductive Assn :=
   | Adisj(A1 A2 : Assn)
   | Astar(A1 A2 : Assn)
   | Awand(A1 A2 : Assn)
-  | Apointsto(t : PointsToType)(q : Qc)(E1 E2 : Expr)
-  | Aproc(x : Var)(q : Qc)(P : HProc)(xs : list ProcVar)(f : ProcVar -> Expr)
-  | Abisim(P Q : HProc)
-  | Aterm(P : HProc)
-with
-  PointsToType := PTTstd | PTTproc | PTTact.
+  | Apointsto(q : Qc)(E1 E2 : Expr)
+  | Aguard(t a : Val)(q: Qc).
 
 Add Search Blacklist "Assn_rect".
 Add Search Blacklist "Assn_ind".
 Add Search Blacklist "Assn_rec".
 Add Search Blacklist "Assn_sind".
-Add Search Blacklist "PointsToType_rect".
-Add Search Blacklist "PointsToType_ind".
-Add Search Blacklist "PointsToType_rec".
-Add Search Blacklist "PointsToType_sind".
 
 (** Below is a helper tactic for doing induction
     on the structure of assertions. *)
@@ -74,24 +60,15 @@ Ltac assn_induction A :=
     (* magic wands *)
     A1 IH1 A2 IH2|
     (* heap ownership *)
-    t q E1 E2|
-    (* process ownership *)
-    x q P xs f|
-    (* bisimilarity *)
-    P Q|
-    (* termination *)
-    P
+    q E1 E2|
+    (* guard ownership *)
+    t a q
   ].
 
 (** Some sugar. *)
 
 Definition Atrue : Assn := Aplain (Bconst true).
 Definition Afalse : Assn := Aplain (Bconst false).
-
-Definition Apointsto_procact (q : Qc)(E1 E2 : Expr) : Assn :=
-  if Qc_eq_dec q 1
-  then Apointsto PTTact q E1 E2
-  else Apointsto PTTproc q E1 E2.
 
 
 (** *** Iterated separating conjunction *)
@@ -107,59 +84,35 @@ Fixpoint Aiter (xs : list Assn) : Assn :=
 (** Two helper definitions for iterated separating conjunctions
     over points-to ownership predicates: *)
 
-Definition ApointstoIter {T} (xs : list T)(F : T -> Qc)(f1 f2 : T -> Expr)(t : PointsToType) : list Assn :=
-  map (fun x : T => Apointsto t (F x) (f1 x) (f2 x)) xs.
-
-Definition ApointstoIter_procact {T} (xs : list T)(F : T -> Qc)(f1 f2 : T -> Expr) : list Assn :=
-  map (fun x : T => Apointsto_procact (F x) (f1 x) (f2 x)) xs.
+Definition ApointstoIter {T} (xs : list T)(F : T -> Qc)(f1 f2 : T -> Expr) : list Assn :=
+  map (fun x : T => Apointsto (F x) (f1 x) (f2 x)) xs.
 
 (** Below are several properties of iterated separating conjunctions. *)
 
 Lemma ApointstoIter_cons {T} :
-  forall (xs : list T)(x : T) F f1 f2 t,
-  ApointstoIter (x :: xs) F f1 f2 t =
-  Apointsto t (F x) (f1 x) (f2 x) :: ApointstoIter xs F f1 f2 t.
+  forall (xs : list T)(x : T) F f1 f2,
+  ApointstoIter (x :: xs) F f1 f2 =
+  Apointsto (F x) (f1 x) (f2 x) :: ApointstoIter xs F f1 f2.
 Proof. ins. Qed.
 
 Lemma ApointstoIter_app {T} :
-  forall (xs ys : list T)(fq : T -> Qc)(f1 f2 : T -> Expr)(t : PointsToType),
-  ApointstoIter xs fq f1 f2 t ++ ApointstoIter ys fq f1 f2 t =
-  ApointstoIter (xs ++ ys) fq f1 f2 t.
-Proof.
-  intros xs ys fq f1 f2 t. unfold ApointstoIter.
-  by rewrite map_app.
-Qed.
-
-Lemma ApointstoIter_procact_app {T} :
   forall (xs ys : list T)(fq : T -> Qc)(f1 f2 : T -> Expr),
-  ApointstoIter_procact xs fq f1 f2 ++ ApointstoIter_procact ys fq f1 f2 =
-  ApointstoIter_procact (xs ++ ys) fq f1 f2.
+  ApointstoIter xs fq f1 f2 ++ ApointstoIter ys fq f1 f2 =
+  ApointstoIter (xs ++ ys) fq f1 f2.
 Proof.
-  intros xs ys fq f1 f2. unfold ApointstoIter_procact.
+  intros xs ys fq f1 f2. unfold ApointstoIter.
   by rewrite map_app.
 Qed.
 
 Lemma ApointstoIter_ext_in {T} :
-  forall (xs : list T)(fq fq' : T -> Qc)(f1 f1' f2 f2' : T -> Expr) t,
-    (forall x : T, In x xs -> fq x = fq' x) ->
-    (forall x : T, In x xs -> f1 x = f1' x) ->
-    (forall x : T, In x xs -> f2 x = f2' x) ->
-  ApointstoIter xs fq f1 f2 t = ApointstoIter xs fq' f1' f2' t.
-Proof.
-  intros xs fq fq' f1 f1' f2 f2' t H1 H2 H3.
-  unfold ApointstoIter. apply map_ext_in.
-  intros x H4. rewrite H1, H2, H3; vauto.
-Qed.
-
-Lemma ApointstoIter_procact_ext_in {T} :
   forall (xs : list T)(fq fq' : T -> Qc)(f1 f1' f2 f2' : T -> Expr),
     (forall x : T, In x xs -> fq x = fq' x) ->
     (forall x : T, In x xs -> f1 x = f1' x) ->
     (forall x : T, In x xs -> f2 x = f2' x) ->
-  ApointstoIter_procact xs fq f1 f2 = ApointstoIter_procact xs fq' f1' f2'.
+  ApointstoIter xs fq f1 f2 = ApointstoIter xs fq' f1' f2'.
 Proof.
   intros xs fq fq' f1 f1' f2 f2' H1 H2 H3.
-  unfold ApointstoIter_procact. apply map_ext_in.
+  unfold ApointstoIter. apply map_ext_in.
   intros x H4. rewrite H1, H2, H3; vauto.
 Qed.
 
@@ -177,10 +130,8 @@ Fixpoint assn_fv (A : Assn)(x : Var) : Prop :=
     | Adisj A1 A2
     | Astar A1 A2
     | Awand A1 A2 => assn_fv A1 x \/ assn_fv A2 x
-    | Apointsto _ _ E1 E2 => In x (expr_fv E1) \/ In x (expr_fv E2)
-    | Aproc y _ P _ f => x = y \/ hproc_fv P x \/ expr_map_fv f x
-    | Abisim P Q => hproc_fv P x \/ hproc_fv Q x
-    | Aterm P => hproc_fv P x
+    | Apointsto  _ E1 E2 => In x (expr_fv E1) \/ In x (expr_fv E2)
+    | Aguard _ _ _ => false
   end.
 
 (** Several useful properties related to free variables: *)
@@ -201,26 +152,6 @@ Proof.
       right. rewrite IH. exists A'. split; vauto.
 Qed.
 
-Lemma assn_fv_ApointstoIter {T} :
-  forall (xs : list T) F f1 f2 t x,
-  assn_fv (Aiter (ApointstoIter xs F f1 f2 t)) x <->
-  exists e : T, In e xs /\ (In x (expr_fv (f1 e)) \/ In x (expr_fv (f2 e))).
-Proof.
-  intros xs F f1 f2 t x. split; intro H.
-  - rewrite assn_fv_iter in H.
-    destruct H as (A&H1&H2).
-    unfold ApointstoIter in H1.
-    rewrite in_map_iff in H1.
-    destruct H1 as (e&H1&H3). clarify.
-    simpl in H2. exists e. intuition.
-  - destruct H as (e&H1&H2).
-    rewrite assn_fv_iter.
-    exists (Apointsto t (F e) (f1 e) (f2 e)). split; vauto.
-    unfold ApointstoIter. rewrite in_map_iff.
-    exists e. intuition.
-Qed.
-
-
 (** *** Substitution *)
 
 (** The operation [assn_subst x E A] substitutes every
@@ -235,10 +166,8 @@ Fixpoint assn_subst (x : Var)(E : Expr)(A : Assn) : Assn :=
     | Adisj A1 A2 => Adisj (assn_subst x E A1) (assn_subst x E A2)
     | Astar A1 A2 => Astar (assn_subst x E A1) (assn_subst x E A2)
     | Awand A1 A2 => Awand (assn_subst x E A1) (assn_subst x E A2)
-    | Apointsto t q E1 E2 => Apointsto t q (expr_subst x E E1) (expr_subst x E E2)
-    | Aproc y q P xs f => Aproc y q (hproc_subst x E P) xs (expr_subst_map x E f)
-    | Abisim P Q => Abisim (hproc_subst x E P) (hproc_subst x E Q)
-    | Aterm P => Aterm (hproc_subst x E P)
+    | Apointsto q E1 E2 => Apointsto q (expr_subst x E E1) (expr_subst x E E2)
+    | Aguard t a q => Aguard t a q
   end.
 
 (** Existential quantification as is written in the paper
@@ -273,16 +202,6 @@ Proof.
     by rewrite IH1, IH2.
   (* heap ownership *)
   - repeat rewrite expr_subst_pres; auto; intro; apply H.
-  (* process ownership *)
-  - apply not_or_and in H1. destruct H1 as (H1&H2).
-    apply not_or_and in H2. destruct H2 as (H2&H3).
-    rewrite hproc_subst_pres; auto.
-    by rewrite expr_subst_pres_map.
-  (* bisimilarity *)
-  - apply not_or_and in H1. destruct H1 as (H1&H2).
-    by repeat rewrite hproc_subst_pres; auto.
-  (* termination *)
-  - rewrite hproc_subst_pres; auto.
 Qed.
 
 
@@ -291,104 +210,40 @@ Qed.
 (** The following satisfaction relation, [sat], defines
     the semantic meaning of assertions. *)
 
-Fixpoint sat (ph : PermHeap)(pm : ProcMap)(s g : Store)(A : Assn) : Prop :=
+Fixpoint sat (ph : PermHeap)(gh : GuardHeap)(s g : Store)(A : Assn) : Prop :=
   match A with
     (* plain *)
     | Aplain B => cond_eval B s = true
     (* quantifiers *)
-    | Aex A => exists v, sat ph pm s g (A v)
+    | Aex A => exists v, sat ph gh s g (A v)
     (* disjunction *)
     | Adisj A1 A2 =>
-        sat ph pm s g A1 \/ sat ph pm s g A2
+        sat ph gh s g A1 \/ sat ph gh s g A2
     (* separating conjunction *)
     | Astar A1 A2 =>
         exists ph1 ph2,
           phDisj ph1 ph2 /\
           phUnion ph1 ph2 = ph /\
-        exists pm1 pm2,
-          pmDisj pm1 pm2 /\
-          pmBisim (pmUnion pm1 pm2) pm /\
-          sat ph1 pm1 s g A1 /\
-          sat ph2 pm2 s g A2
+        exists gh1 gh2,
+          ghDisj gh1 gh2 /\
+          ghUnion gh1 gh2 = gh /\
+          sat ph1 gh1 s g A1 /\
+          sat ph2 gh2 s g A2
     (* magic wand *)
     | Awand A1 A2 =>
-        forall ph' pm',
+        forall ph' gh',
         phDisj ph ph' ->
-        pmDisj pm pm' ->
-        sat ph' pm' s g A1 ->
-        sat (phUnion ph ph') (pmUnion pm pm') s g A2
+        ghDisj gh gh' ->
+        sat ph' gh' s g A1 ->
+        sat (phUnion ph ph') (ghUnion gh gh') s g A2
     (* standard heap ownership *)
-    | Apointsto PTTstd q E1 E2 =>
+    | Apointsto q E1 E2 =>
         let l := expr_eval E1 s in
         let v := expr_eval E2 s in
         perm_valid q /\ phcLe (PHCstd q v) (ph l)
     (* process heap ownership *)
-    | Apointsto PTTproc q E1 E2 =>
-        let l := expr_eval E1 s in
-        let v := expr_eval E2 s in
-        perm_valid q /\ phcLe (PHCproc q v) (ph l)
-    (* action heap ownership *)
-    | Apointsto PTTact q E1 E2 =>
-        let l := expr_eval E1 s in
-        let v := expr_eval E2 s in
-        perm_valid q /\ exists v', phcLe (PHCact q v v') (ph l)
-    (* process ownership *)
-    | Aproc x q HP xs f =>
-        let P := pDehybridise HP s in
-        let F := expr_eval_map f s in
-        let c := PEelem q P xs F in
-        exists c',
-          pmeDisj c c' /\
-          pmeBisim (pm (g x)) (pmeUnion c c')
-    (* bisimilarity *)
-    | Abisim P Q =>
-        bisim (pDehybridise P s) (pDehybridise Q s)
-    (* termination *)
-    | Aterm P => pterm (pDehybridise P s)
+    | Aguard t a q => perm_valid q /\ ghcLe (GHCstd q) (gh (GGuard t a))
   end.
-
-(** Process maps can always be replaced by bisimilar ones
-    (and therefore also by equal ones, since process map equality
-    is a subrelation of bisimilarity). *)
-
-Lemma sat_procmap_bisim :
-  forall A ph pm1 pm2 s g,
-  pmBisim pm1 pm2 -> sat ph pm1 s g A -> sat ph pm2 s g A.
-Proof.
-  assn_induction A; intros ph pm1 pm2 s g H1 H2; vauto.
-  (* quantifiers *)
-  - simpl in H2. destruct H2 as (v&H2).
-    exists v. by apply IH with pm1.
-  (* disjunction *)
-  - simpls. destruct H2 as [H2|H2].
-    + left. by apply IH1 with pm1.
-    + right. by apply IH2 with pm1.
-  (* separating conjunction *)
-  - simpls.
-    destruct H2 as (ph1&ph2&D1&D2&pm3&pm4&D3&D4&D5&D6).
-    exists ph1, ph2. intuition.
-    exists pm3, pm4. intuition.
-    by rewrite <- H1.
-  (* magic wand *)
-  - simpls. intros ph' pm' H3 H4 H5.
-    apply IH2 with (pmUnion pm1 pm'); clear IH2.
-    + by rewrite H1.
-    + apply H2; auto. by rewrite H1.
-  (* process ownership *)
-  - unfold sat in *.
-    destruct H2 as (c&H2&H3).
-    exists c. intuition.
-    rewrite <- H3. by rewrite H1.
-Qed.
-Add Parametric Morphism : sat
-  with signature eq ==> pmBisim ==> eq ==> eq ==> eq ==> iff
-    as sat_bisim_mor.
-Proof.
-  intros ph pm1 pm2 H1 s g A. split; intro H2.
-  - by apply sat_procmap_bisim with pm1; auto.
-  - apply sat_procmap_bisim with pm2; auto.
-    by symmetry.
-Qed.
 
 (** The following lemma relates substitution in assertions
     with the satisfiability of that assertion. *)
@@ -435,23 +290,9 @@ Proof.
   (* heap ownership *)
   - simpl. repeat rewrite <- expr_eval_subst in *. vauto.
   - simpl. repeat rewrite expr_eval_subst in *. vauto.
-  (* process ownership *)
-  - destruct H1 as (c&H1&H2). exists c.
-    rewrite <- expr_eval_subst_map in *.
-    split; auto. by rewrite <- pDehybridise_subst.
-  - destruct H1 as (c&H1&H2). exists c.
-    rewrite expr_eval_subst_map in *.
-    split; auto. by rewrite pDehybridise_subst.
-  (* bisimilarity *)
-  - simpl in H1. simpl.
-    by repeat rewrite <- pDehybridise_subst.
-  - simpl in H1. simpl.
-    by repeat rewrite pDehybridise_subst.
-  (* termination *)
-  - simpl in H1. simpl.
-    by repeat rewrite <- pDehybridise_subst.
-  - simpl in H1. simpl.
-    by repeat rewrite pDehybridise_subst.
+  (* guard ownership *)
+  - vauto.
+  - vauto.
 Qed.
 
 (** The satisfiability of any assertion [A] only depends
@@ -515,52 +356,18 @@ Proof.
   - unfold sat in H2.
     rewrite expr_agree with (s2:=s2) in H2; auto.
     2:{ intros x H3. apply H1. simpl. by right. }
-    unfold sat. destruct t.
-    + rewrite <- expr_agree with (E:=E1)(s1:=s1); auto.
-      red. intros x H3. apply H1. simpl. by left.
-    + rewrite <- expr_agree with (E:=E1)(s1:=s1); auto.
-      red. intros x H3. apply H1. simpl. by left.
-    + rewrite <- expr_agree with (E:=E1)(s1:=s1); auto.
-      red. intros x H3. apply H1. simpl. by left.
+    unfold sat.
+    rewrite <- expr_agree with (E:=E1)(s1:=s1); auto.
+    red. intros x H3. apply H1. simpl. by left.
   - unfold sat in H2.
     rewrite <- expr_agree with (s1:=s1) in H2; auto.
     2:{ intros x H3. apply H1. simpl. by right. }
-    unfold sat. destruct t.
-    + rewrite expr_agree with (E:=E1)(s2:=s2); auto.
-      red. intros x H3. apply H1. simpl. by left.
-    + rewrite expr_agree with (E:=E1)(s2:=s2); auto.
-      red. intros x H3. apply H1. simpl. by left.
-    + rewrite expr_agree with (E:=E1)(s2:=s2); auto.
-      red. intros x H3. apply H1. simpl. by left.
-  (* process ownership *)
-  - destruct H2 as (c&H2&H3). unfold sat.
-    rewrite <- expr_map_agree with (s3:=s1); vauto.
-    + exists c. intuition.
-      rewrite <- pDehybridise_agree with (s1:=s1); auto.
-      intros y H4. apply H1. simpl. right. by left.
-    + intros y H4. apply H1. simpl. by repeat right.
-  - destruct H2 as (c&H2&H3). unfold sat.
-    rewrite expr_map_agree with (s4:=s2); vauto.
-    + exists c. intuition.
-      rewrite pDehybridise_agree with (s2:=s2); auto.
-      intros y H4. apply H1. simpl. right. by left.
-    + intros y H4. apply H1. simpl. by repeat right.
-  (* bisimilarity *)
-  - simpl in H2. simpl.
-    rewrite <- pDehybridise_agree with (s1:=s1)(P:=P).
-    2:{ intros x H3. apply H1. simpl. by left. }
-    rewrite <- pDehybridise_agree with (s1:=s1)(P:=Q); auto.
-    intros x H3. apply H1. simpl. by right.
-  - simpl in H2. simpl.
-    rewrite pDehybridise_agree with (s2:=s2)(P:=P).
-    2:{ intros x H3. apply H1. simpl. by left. }
-    rewrite pDehybridise_agree with (s2:=s2)(P:=Q); auto.
-    intros x H3. apply H1. simpl. by right.
-  (* termination *)
-  - simpl in H2. simpl.
-    rewrite <- pDehybridise_agree with (s1:=s1)(P:=P); auto.
-  - simpl in H2. simpl.
-    rewrite pDehybridise_agree with (s2:=s2)(P:=P); auto.
+    unfold sat. 
+    rewrite expr_agree with (E:=E1)(s2:=s2); auto.
+    red. intros x H3. apply H1. simpl. by left.
+  (* guard ownership *)
+  - simpls.
+  - simpls.
 Qed.
 Lemma sat_agree_ghost :
   forall A ph pm s g1 g2,
@@ -613,13 +420,6 @@ Proof.
       rewrite <- IH1 with (g1:=g1); auto.
       intros x H2. apply H1. by left.
     + intros x H6. apply H1. by right.
-  (* process ownership *)
-  - destruct H2 as (c&H2&H3). unfold sat.
-    exists c. intuition. rewrite <- H1; [done|].
-    simpl. by left.
-  - destruct H2 as (c&H2&H3). unfold sat.
-    exists c. intuition. rewrite H1; [done|].
-    simpl. by left.
 Qed.
 
 (** Satisfiability of any assertion [A] is insensitive to
@@ -656,9 +456,9 @@ Qed.
 Lemma sat_weaken :
   forall A ph1 ph2 pm1 pm2 s g,
   phDisj ph1 ph2 ->
-  pmDisj pm1 pm2 ->
+  ghDisj pm1 pm2 ->
   sat ph1 pm1 s g A ->
-  sat (phUnion ph1 ph2) (pmUnion pm1 pm2) s g A.
+  sat (phUnion ph1 ph2) (ghUnion pm1 pm2) s g A.
 Proof.
   assn_induction A; intros ph1 ph2 pm1 pm2 s g H1 H2 H3; auto.
   (* quantifiers *)
@@ -673,10 +473,10 @@ Proof.
     destruct H3 as (ph3&ph4&D1&D2&pm3&pm4&D3&D4&D5&D6).
     simpl. clarify. exists ph3, (phUnion ph4 ph2).
     intuition; [phsolve|phsolve|].
-    exists pm3, (pmUnion pm4 pm2).
+    exists pm3, (ghUnion pm4 pm2).
     rewrite <- D4 in *. clear D4.
-    intuition; [pmsolve|pmsolve|].
-    apply IH2; [phsolve|pmsolve|done].
+    intuition; [ghsolve|ghsolve|].
+    apply IH2; [phsolve|ghsolve|done].
   (* magic wand *)
   - simpls. intros ph' pm' H4 H5 H6.
     rewrite phUnion_assoc, pmUnion_assoc.
@@ -684,16 +484,10 @@ Proof.
     rewrite phUnion_comm, pmUnion_comm.
     apply IH1; [phsolve|pmsolve|done].
   (* heap ownership *)
-  - unfold sat in *. destruct t.
-    + destruct H3 as (H3&H4). split; [done|].
-      rewrite <- phUnion_cell.
-      apply phcLe_weaken; vauto.
-    + destruct H3 as (H3&H4). split; [done|].
-      rewrite <- phUnion_cell.
-      apply phcLe_weaken; vauto.
-    + destruct H3 as (H3&v&H4). split; [done|].
-      exists v. rewrite <- phUnion_cell.
-      apply phcLe_weaken; vauto.
+  - unfold sat in *.
+    destruct H3 as (H3&H4). split; [done|].
+    rewrite <- phUnion_cell.
+    apply phcLe_weaken; vauto.
   (* process ownership *)
   - unfold sat in *.
     destruct H3 as (pmv&H3&H4).
