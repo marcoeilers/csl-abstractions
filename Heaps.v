@@ -104,6 +104,11 @@ Add Search Blacklist "PermHeapCell_rec".
 Add Search Blacklist "PermHeapCell_sind".
 
 
+Inductive GuardHeapCell :=
+  | GHCfree
+  | GHCstd(q : Qc)
+  | GHCinvalid.
+
 (** *** Validity *)
 
 (** Any permission heap cell [phc] is _valid_ if [phc]
@@ -121,6 +126,17 @@ Notation "√ phc" :=
   (phcValid phc)
   (only printing, at level 80).
 
+Definition ghcValid (ghc : GuardHeapCell) : Prop :=
+  match ghc with
+    | GHCfree => True
+    | GHCstd q => perm_valid q
+    | GHCinvalid => False
+  end.
+
+Notation "√ ghc" :=
+  (ghcValid ghc)
+  (only printing, at level 80).
+
 (** Free cells are always valid, whereas invalid cells are never valid. *)
 
 Lemma phcValid_free : phcValid PHCfree.
@@ -133,6 +149,17 @@ Proof.
 Qed.
 
 Hint Resolve phcValid_free phcValid_contra : core.
+
+Lemma ghcValid_free : ghcValid GHCfree.
+Proof. ins. Qed.
+
+Lemma ghcValid_contra :
+  forall ghc, ghcValid ghc -> ghc <> GHCinvalid.
+Proof.
+  intros ghc H. unfold ghcValid in H. desf.
+Qed.
+
+Hint Resolve ghcValid_free ghcValid_contra : core.
 
 
 (** *** Disjointness *)
@@ -159,11 +186,33 @@ Notation "phc1 ⟂ phc2" :=
   (phcDisj phc1 phc2)
   (only printing, at level 80).
 
+
+Definition ghcDisj (ghc1 ghc2 : GuardHeapCell) : Prop :=
+  match ghc1, ghc2 with
+    | GHCinvalid, _
+    | _, GHCinvalid => False
+    | GHCfree, GHCfree => True
+    | GHCfree, ghc
+    | ghc, GHCfree => ghcValid ghc
+    | GHCstd q1, GHCstd q2 =>
+        perm_disj q1 q2
+  end.
+
+Notation "ghc1 ⟂ ghc2" :=
+  (ghcDisj ghc1 ghc2)
+  (only printing, at level 80).
+
 (** Heap cell disjointness is a symmetric relation *)
 
 Global Instance phcDisj_symm : Symmetric phcDisj.
 Proof.
   unfold phcDisj. red.
+  ins; desf; simpls; intuition.
+Qed.
+
+Global Instance ghcDisj_symm : Symmetric ghcDisj.
+Proof.
+  unfold ghcDisj. red.
   ins; desf; simpls; intuition.
 Qed.
 
@@ -177,6 +226,16 @@ Lemma phcDisj_free_r :
 Proof. ins. desf. Qed.
 
 Hint Resolve phcDisj_free_l phcDisj_free_r : core.
+
+
+Lemma ghcDisj_free_l :
+  forall ghc, ghcValid ghc -> ghcDisj ghc GHCfree.
+Proof. ins. red. desf. Qed.
+Lemma ghcDisj_free_r :
+  forall ghc, ghcValid ghc -> ghcDisj GHCfree ghc.
+Proof. ins. desf. Qed.
+
+Hint Resolve ghcDisj_free_l ghcDisj_free_r : core.
 
 (** Below are some other useful properties of disjointness. *)
 
@@ -200,6 +259,29 @@ Proof.
   intros phc1 phc2 H. split.
   - by apply phcDisj_valid_l in H.
   - by apply phcDisj_valid_r in H.
+Qed.
+
+
+Lemma ghcDisj_valid_l :
+  forall ghc1 ghc2, ghcDisj ghc1 ghc2 -> ghcValid ghc1.
+Proof.
+  unfold ghcDisj, ghcValid.
+  intros ?? H.
+  repeat desf; try (by apply perm_disj_valid in H; desf).
+Qed.
+Lemma ghcDisj_valid_r :
+  forall ghc1 ghc2, ghcDisj ghc1 ghc2 -> ghcValid ghc2.
+Proof.
+  intros ?? H. symmetry in H.
+  by apply ghcDisj_valid_l in H.
+Qed.
+Lemma ghcDisj_valid :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 -> ghcValid ghc1 /\ ghcValid ghc2.
+Proof.
+  intros ghc1 ghc2 H. split.
+  - by apply ghcDisj_valid_l in H.
+  - by apply ghcDisj_valid_r in H.
 Qed.
 
 
@@ -234,6 +316,21 @@ Notation "phc1 ⨄ phc2" :=
   (phcUnion phc1 phc2)
   (only printing, at level 80, right associativity).
 
+
+Definition ghcUnion (ghc1 ghc2 : GuardHeapCell) : GuardHeapCell :=
+  match ghc1, ghc2 with
+    | GHCinvalid, _
+    | _, GHCinvalid => GHCinvalid
+    | GHCfree, ghc
+    | ghc, GHCfree => ghc
+    | GHCstd q1, GHCstd q2 =>
+        GHCstd (q1 + q2)
+  end.
+
+Notation "ghc1 ⨄ ghc2" :=
+  (ghcUnion ghc1 ghc2)
+  (only printing, at level 80, right associativity).
+
 (** The [phcUnion] relation is associative and commutative. *)
 
 Lemma phcUnion_assoc :
@@ -256,6 +353,27 @@ Qed.
 
 Hint Resolve phcUnion_assoc phcUnion_comm : core.
 
+
+Lemma ghcUnion_assoc :
+  forall ghc1 ghc2 ghc3,
+  ghcUnion ghc1 (ghcUnion ghc2 ghc3) =
+  ghcUnion (ghcUnion ghc1 ghc2) ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3.
+  destruct ghc1, ghc2, ghc3; simpls; desf;
+    unfold ghcUnion; desf; by rewrite Qcplus_assoc.
+Qed.
+
+Lemma ghcUnion_comm :
+  forall ghc1 ghc2,
+  ghcUnion ghc1 ghc2 = ghcUnion ghc2 ghc1.
+Proof.
+  unfold ghcUnion. ins.
+  repeat desf; by rewrite Qcplus_comm.
+Qed.
+
+Hint Resolve ghcUnion_assoc ghcUnion_comm : core.
+
 (** The following lemmas show that [PHCfree] is neutral for union. *)
 
 Lemma phcUnion_free_l :
@@ -266,6 +384,16 @@ Lemma phcUnion_free_r :
 Proof. unfold phcUnion. ins. desf. Qed.
 
 Hint Rewrite phcUnion_free_l phcUnion_free_r : core.
+
+
+Lemma ghcUnion_free_l :
+  forall ghc, ghcUnion ghc GHCfree = ghc.
+Proof. unfold ghcUnion. ins. desf. Qed.
+Lemma ghcUnion_free_r :
+  forall ghc, ghcUnion GHCfree ghc = ghc.
+Proof. unfold ghcUnion. ins. desf. Qed.
+
+Hint Rewrite ghcUnion_free_l ghcUnion_free_r : core.
 
 (** Below are various other useful properties of heap cell union. *)
 
@@ -404,6 +532,141 @@ Proof.
   - unfold phcUnion. desf; vauto.
 Qed.
 
+Lemma ghcUnion_valid :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 -> ghcValid (ghcUnion ghc1 ghc2).
+Proof.
+  unfold ghcDisj, ghcUnion, ghcValid.
+  ins. repeat desf; by apply perm_add_valid.
+Qed.
+
+Lemma ghcDisj_union_l :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc1 ghc2 ->
+  ghcDisj (ghcUnion ghc1 ghc2) ghc3 ->
+  ghcDisj ghc2 ghc3.
+Proof.
+  intros ??? H1 H2.
+  unfold ghcUnion, ghcDisj in *.
+  desf; simpls; intuition; permsolve.
+Qed.
+Lemma ghcDisj_union_r :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc2 ghc3 ->
+  ghcDisj ghc1 (ghcUnion ghc2 ghc3) ->
+  ghcDisj ghc1 ghc2.
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  symmetry in H1, H2.
+  rewrite ghcUnion_comm in H2; auto.
+  apply ghcDisj_union_l in H2; auto.
+  by symmetry.
+Qed.
+
+Lemma ghcDisj_assoc_l :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc1 ghc2 ->
+  ghcDisj (ghcUnion ghc1 ghc2) ghc3 ->
+  ghcDisj ghc1 (ghcUnion ghc2 ghc3).
+Proof.
+  unfold ghcDisj, ghcUnion.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  desf; simpls; intuition vauto; permsolve.
+Qed.
+Lemma ghcDisj_assoc_r :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc2 ghc3 ->
+  ghcDisj ghc1 (ghcUnion ghc2 ghc3) ->
+  ghcDisj (ghcUnion ghc1 ghc2) ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  symmetry in H1, H2.
+  rewrite ghcUnion_comm in H2; auto.
+  apply ghcDisj_assoc_l in H2; auto.
+  rewrite ghcUnion_comm in H2; auto.
+  by symmetry.
+Qed.
+
+Lemma ghcDisj_middle :
+  forall ghc1 ghc2 ghc3 ghc4,
+  ghcDisj ghc1 ghc2 ->
+  ghcDisj ghc3 ghc4 ->
+  ghcDisj (ghcUnion ghc1 ghc2) (ghcUnion ghc3 ghc4) ->
+  ghcDisj ghc2 ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3 ghc4 H1 H2 H3.
+  apply ghcDisj_union_l with ghc1; auto.
+  by apply ghcDisj_union_r with ghc4.
+Qed.
+
+Lemma ghcDisj_compat :
+  forall ghc1 ghc2 ghc3 ghc4,
+  ghcDisj ghc1 ghc3 ->
+  ghcDisj ghc2 ghc4 ->
+  ghcDisj (ghcUnion ghc1 ghc3) (ghcUnion ghc2 ghc4) ->
+  ghcDisj (ghcUnion ghc1 ghc2) (ghcUnion ghc3 ghc4).
+Proof.
+  intros ghc1 ghc2 ghc3 ghc4 H1 H2 H3.
+  apply ghcDisj_assoc_r.
+  rewrite ghcUnion_comm.
+  apply ghcDisj_assoc_l; auto.
+  symmetry. by apply ghcDisj_union_l in H3.
+  rewrite ghcUnion_comm.
+  rewrite <- ghcUnion_assoc.
+  apply ghcDisj_assoc_l; auto.
+  by rewrite ghcUnion_comm with ghc4 ghc2.
+Qed.
+
+Lemma ghcUnion_swap_l :
+  forall ghc1 ghc2 ghc3,
+  ghcUnion ghc1 (ghcUnion ghc2 ghc3) =
+  ghcUnion ghc2 (ghcUnion ghc1 ghc3).
+Proof.
+  intros ghc1 ghc2 ghc3.
+  rewrite ghcUnion_assoc.
+  rewrite ghcUnion_comm with ghc1 ghc2.
+  by rewrite ghcUnion_assoc.
+Qed.
+Lemma ghcUnion_swap_r :
+  forall ghc1 ghc2 ghc3,
+  ghcUnion (ghcUnion ghc1 ghc2) ghc3 =
+  ghcUnion (ghcUnion ghc1 ghc3) ghc2.
+Proof.
+  intros ghc1 ghc2 ghc3.
+  rewrite ghcUnion_comm.
+  rewrite ghcUnion_swap_l.
+  by rewrite ghcUnion_assoc.
+Qed.
+
+Lemma ghcUnion_compat :
+  forall ghc1 ghc2 ghc3 ghc4,
+  ghcUnion (ghcUnion ghc1 ghc3) (ghcUnion ghc2 ghc4) =
+  ghcUnion (ghcUnion ghc1 ghc2) (ghcUnion ghc3 ghc4).
+Proof.
+  intros ghc1 ghc2 ghc3 ghc4.
+  rewrite ghcUnion_swap_l.
+  repeat rewrite ghcUnion_assoc.
+  by rewrite ghcUnion_comm with ghc2 ghc1.
+Qed.
+
+Lemma ghcUnion_free :
+  forall ghc1 ghc2,
+  ghcUnion ghc1 ghc2 = GHCfree <-> ghc1 = GHCfree /\ ghc2 = GHCfree.
+Proof.
+  intros ghc1 ghc2; split; intro H1.
+  - unfold ghcUnion in H1. desf.
+  - destruct H1 as (H1&H2). clarify.
+Qed.
+
+Lemma ghcUnion_not_free :
+  forall ghc1 ghc2,
+  ghcUnion ghc1 ghc2 <> GHCfree <-> ghc1 <> GHCfree \/ ghc2 <> GHCfree.
+Proof.
+  intros ghc1 ghc2. split; intro H.
+  - unfold ghcUnion in H. desf; vauto.
+  - unfold ghcUnion. desf; vauto.
+Qed.
+
 
 (** *** Orderings *)
 
@@ -420,6 +683,19 @@ Definition phcLt (phc1 phc2 : PermHeapCell) : Prop :=
 
 Notation "phc1 ≺ phc2" :=
   (phcLt phc1 phc2)
+  (only printing, at level 80).
+
+
+Definition ghcLt (ghc1 ghc2 : GuardHeapCell) : Prop :=
+  match ghc1, ghc2 with
+    | GHCfree, GHCfree => False
+    | GHCfree, _ => True
+    | GHCstd q1, GHCstd q2 => q1 < q2
+    | _, _ => False
+  end.
+
+Notation "ghc1 ≺ ghc2" :=
+  (ghcLt ghc1 ghc2)
   (only printing, at level 80).
 
 (** The [phcLt] relation is a strict partial order
@@ -445,6 +721,29 @@ Proof.
   by apply phcLt_irrefl in H3.
 Qed.
 Global Instance phcLt_strictorder : StrictOrder phcLt.
+Proof. split; intuition. Qed.
+
+
+Global Instance ghcLt_irrefl : Irreflexive ghcLt.
+Proof.
+  red. red. intros ghc H.
+  unfold ghcLt in H. repeat desf.
+  - by apply Qclt_irrefl with q.
+Qed.
+Global Instance ghcLt_trans : Transitive ghcLt.
+Proof.
+  red. intros ghc1 ghc2 ghc3 H1 H2.
+  unfold ghcLt in *.
+  repeat desf; intuition vauto.
+  - by apply Qclt_trans with q1.
+Qed.
+Global Instance ghcLt_asymm : Asymmetric ghcLt.
+Proof.
+  red. intros ghc1 ghc2 H1 H2.
+  assert (H3 : ghcLt ghc1 ghc1) by by (transitivity ghc2).
+  by apply ghcLt_irrefl in H3.
+Qed.
+Global Instance ghcLt_strictorder : StrictOrder ghcLt.
 Proof. split; intuition. Qed.
 
 (** Below are several other useful properties of [phcLt]. *)
@@ -526,6 +825,84 @@ Proof.
   - by apply perm_disj_lt with q1.
 Qed.
 
+
+
+Lemma ghcLt_mono_pos :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 ->
+  ghcLt GHCfree ghc2 ->
+  ghcLt ghc1 (ghcUnion ghc1 ghc2).
+Proof.
+  intros ghc1 ghc2 H1 H2.
+  unfold ghcDisj, ghcValid in H1.
+  unfold ghcLt in *. unfold ghcUnion.
+  repeat desf; simpls; intuition vauto.
+  - permsolve.
+Qed.
+
+Lemma ghcLt_mono_l :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc3 ghc2 ->
+  ghcLt ghc1 ghc2 ->
+  ghcLt (ghcUnion ghc3 ghc1) (ghcUnion ghc3 ghc2).
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  destruct ghc3; vauto.
+  (* [ghc3] is free *)
+  - by repeat rewrite ghcUnion_free_r.
+  (* [ghc3] is a standard heap cell *)
+  - unfold ghcDisj, ghcUnion, ghcLt in *.
+    repeat desf; intuition.
+    + permsolve.
+    + clear H1. by apply Qcplus_lt_mono_l.
+Qed.
+Lemma ghcLt_mono_r :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc2 ghc3 ->
+  ghcLt ghc1 ghc2 ->
+  ghcLt (ghcUnion ghc1 ghc3) (ghcUnion ghc2 ghc3).
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  rewrite ghcUnion_comm with ghc1 ghc3.
+  rewrite ghcUnion_comm with ghc2 ghc3.
+  apply ghcLt_mono_l; auto. by symmetry.
+Qed.
+
+Lemma ghcLt_diff :
+  forall ghc1 ghc2,
+  ghcValid ghc1 ->
+  ghcValid ghc2 ->
+  ghcLt ghc1 ghc2 ->
+  exists ghc3, ghcDisj ghc1 ghc3 /\ ghcUnion ghc1 ghc3 = ghc2.
+Proof.
+  intros ghc1 ghc2 H1 H2 H3.
+  unfold ghcValid in H1, H2.
+  unfold ghcLt in H3. repeat desf; vauto.
+  (* [ghc1] is free and [ghc2] a 'standard' cell *)
+  - exists (GHCstd q). vauto.
+  (* [ghc1] and [ghc2] are both 'standard' cells *)
+  - apply perm_lt_diff in H3; auto.
+    destruct H3 as (q'&H3&H4); vauto.
+    exists (GHCstd q'). intuition vauto.
+Qed.
+
+Lemma ghcDisj_lt :
+  forall ghc1 ghc2 ghc3,
+  ghcValid ghc1 ->
+  ghcDisj ghc2 ghc3 ->
+  ghcLt ghc1 ghc2 ->
+  ghcDisj ghc1 ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2 H3.
+  generalize H2. intros H4.
+  apply ghcDisj_valid in H4.
+  destruct H4 as (H4&H5).
+  unfold ghcLt in H3.
+  unfold ghcDisj, ghcValid in *.
+  repeat desf; intuition vauto.
+  - by apply perm_disj_lt with q1.
+Qed.
+
 (** The following partial order defines the 'less than or equal to'
     relation on permission heap cells. *)
 
@@ -539,6 +916,19 @@ Definition phcLe (phc1 phc2 : PermHeapCell) : Prop :=
 
 Notation "phc1 ≼ phc2" :=
   (phcLe phc1 phc2)
+  (only printing, at level 80).
+
+
+Definition ghcLe (ghc1 ghc2 : GuardHeapCell) : Prop :=
+  match ghc1, ghc2 with
+    | GHCfree, _ => True
+    | GHCstd q1, GHCstd q2 => q1 <= q2
+    | GHCinvalid, GHCinvalid => True
+    | _, _ => False
+  end.
+
+Notation "ghc1 ≼ ghc2" :=
+  (ghcLe ghc1 ghc2)
   (only printing, at level 80).
 
 (** The [phcLe] relation is a non-strict partial order. *)
@@ -606,6 +996,72 @@ Proof.
   - intros H1. red in H1. red in H1. red in H1.
     destruct H1 as (H1&H2). red in H2.
     by apply phcLe_antisym.
+Qed.
+
+
+Global Instance ghcLe_refl : Reflexive ghcLe.
+Proof.
+  red. intro ghc. red.
+  repeat desf; intuition vauto; by apply Qcle_refl.
+Qed.
+
+Hint Resolve ghcLe_refl : core.
+
+Lemma ghcLt_le_weak :
+  forall ghc1 ghc2,
+  ghcLt ghc1 ghc2 -> ghcLe ghc1 ghc2.
+Proof.
+  intros ghc1 ghc2 H.
+  unfold ghcLt in H.
+  unfold ghcLe. repeat desf; intuition vauto.
+  - by apply Qclt_le_weak.
+Qed.
+
+Lemma ghcLe_lt_or_eq :
+  forall ghc1 ghc2,
+  ghcLe ghc1 ghc2 <->
+  ghc1 = ghc2 \/ ghcLt ghc1 ghc2.
+Proof.
+  intros ghc1 ghc2. split; intro H.
+  (* left-to-right *)
+  - unfold ghcLe in H. repeat desf; vauto.
+    + destruct ghc2; vauto.
+    + apply Qcle_lt_or_eq in H. desf; vauto.
+  (* right-to-left *)
+  - destruct H as [H|H]; vauto.
+    by apply ghcLt_le_weak.
+Qed.
+
+Global Instance ghcLe_antisym :
+  Antisymmetric GuardHeapCell eq ghcLe.
+Proof.
+  red. intros ghc1 ghc2 H1 H2.
+  apply ghcLe_lt_or_eq in H1.
+  apply ghcLe_lt_or_eq in H2.
+  destruct H1 as [H1|H1], H2 as [H2|H2]; vauto.
+  by apply ghcLt_asymm in H1.
+Qed.
+Global Instance ghcLe_trans : Transitive ghcLe.
+Proof.
+  red. intros ghc1 ghc2 ghc3 H1 H2.
+  apply ghcLe_lt_or_eq in H1.
+  apply ghcLe_lt_or_eq in H2.
+  destruct H1 as [H1|H1], H2 as [H2|H2]; vauto.
+  - by apply ghcLt_le_weak.
+  - by apply ghcLt_le_weak.
+  - apply ghcLt_le_weak.
+    by transitivity ghc2.
+Qed.
+Global Instance ghcLe_preorder : PreOrder ghcLe.
+Proof. split; intuition. Qed.
+Global Instance ghcLe_partialorder : PartialOrder eq ghcLe.
+Proof.
+  split.
+  - intros H1. red. red. red. intuition vauto.
+    red. auto.
+  - intros H1. red in H1. red in H1. red in H1.
+    destruct H1 as (H1&H2). red in H2.
+    by apply ghcLe_antisym.
 Qed.
 
 (** Below are various other useful properties of [phcLe]. *)
@@ -760,6 +1216,157 @@ Proof.
 Qed.
 
 
+
+Lemma ghcLe_valid :
+  forall ghc, ghcLe GHCfree ghc.
+Proof.
+  ins.
+Qed.
+
+Lemma ghcLe_lt_trans :
+  forall ghc1 ghc2 ghc3,
+  ghcLe ghc1 ghc2 ->
+  ghcLt ghc2 ghc3 ->
+  ghcLt ghc1 ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  apply ghcLe_lt_or_eq in H1.
+  destruct H1 as [H1|H1]; vauto.
+  by transitivity ghc2.
+Qed.
+
+Lemma ghcLt_le_trans :
+  forall ghc1 ghc2 ghc3,
+  ghcLt ghc1 ghc2 ->
+  ghcLe ghc2 ghc3 ->
+  ghcLt ghc1 ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  apply ghcLe_lt_or_eq in H2.
+  destruct H2 as [H2|H2]; vauto.
+  by transitivity ghc2.
+Qed.
+
+Lemma ghcLt_weaken :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc2 ghc3 ->
+  ghcLt ghc1 ghc2 ->
+  ghcLt ghc1 (ghcUnion ghc2 ghc3).
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  apply ghcLt_le_trans with ghc2; auto.
+  assert (H3 : GHCfree = ghc3 \/ ghcLt GHCfree ghc3). {
+    apply ghcLe_lt_or_eq, ghcLe_valid. }
+  destruct H3 as [H3|H3].
+  (* [ghc3] is free *)
+  - clarify. by rewrite ghcUnion_free_l.
+  (* [ghc3] is occupied *)
+  - rewrite ghcLe_lt_or_eq. right.
+    by apply ghcLt_mono_pos.
+Qed.
+
+Lemma ghcLe_weaken :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc2 ghc3 ->
+  ghcLe ghc1 ghc2 ->
+  ghcLe ghc1 (ghcUnion ghc2 ghc3).
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  apply ghcLe_lt_or_eq in H2.
+  destruct H2 as [H2|H2]; vauto.
+  (* the 'equals' case *)
+  - assert (H2 : GHCfree = ghc3 \/ ghcLt GHCfree ghc3). {
+      apply ghcLe_lt_or_eq, ghcLe_valid. }
+    destruct H2 as [H2|H2].
+    + clarify. by rewrite ghcUnion_free_l.
+    + apply ghcLt_le_weak.
+      by apply ghcLt_mono_pos.
+  (* the 'less than' case *)
+  - by apply ghcLt_le_weak, ghcLt_weaken.
+Qed.
+
+Lemma ghcLe_mono_l :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc3 ghc2 ->
+  ghcLe ghc1 ghc2 ->
+  ghcLe (ghcUnion ghc3 ghc1) (ghcUnion ghc3 ghc2).
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  apply ghcLe_lt_or_eq in H2.
+  destruct H2 as [H2|H2]; vauto.
+  apply ghcLt_le_weak.
+  by apply ghcLt_mono_l.
+Qed.
+Lemma ghcLe_mono_r :
+  forall ghc1 ghc2 ghc3,
+  ghcDisj ghc2 ghc3 ->
+  ghcLe ghc1 ghc2 ->
+  ghcLe (ghcUnion ghc1 ghc3) (ghcUnion ghc2 ghc3).
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2.
+  rewrite ghcUnion_comm with ghc1 ghc3.
+  rewrite ghcUnion_comm with ghc2 ghc3.
+  apply ghcLe_mono_l; auto.
+  by symmetry.
+Qed.
+
+Lemma ghcLe_mono_pos :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 ->
+  ghcLe ghc1 (ghcUnion ghc1 ghc2).
+Proof.
+  intros ghc1 ghc2 H1.
+  transitivity (ghcUnion ghc1 GHCfree).
+  - by rewrite ghcUnion_free_l.
+  - apply ghcLe_mono_l; vauto.
+Qed.
+
+Lemma ghcLe_compat :
+  forall ghc1 ghc2 ghc3 ghc4,
+  ghcDisj ghc1 ghc4 ->
+  ghcDisj ghc3 ghc4 ->
+  ghcLe ghc1 ghc3 ->
+  ghcLe ghc2 ghc4 ->
+  ghcLe (ghcUnion ghc1 ghc2) (ghcUnion ghc3 ghc4).
+Proof.
+  intros ghc1 ghc2 ghc3 ghc4.
+  transitivity (ghcUnion ghc1 ghc4).
+  apply ghcLe_mono_l; auto.
+  apply ghcLe_mono_r; auto.
+Qed.
+
+Lemma ghcLe_diff :
+  forall ghc1 ghc2,
+  ghcValid ghc1 ->
+  ghcValid ghc2 ->
+  ghcLe ghc1 ghc2 ->
+  exists ghc3, ghcDisj ghc1 ghc3 /\ ghcUnion ghc1 ghc3 = ghc2.
+Proof.
+  intros ghc1 ghc2 H1 H2 H3.
+  apply ghcLe_lt_or_eq in H3.
+  destruct H3 as [H3|H3]; clarify.
+  (* the 'equals' case *)
+  - exists GHCfree. split.
+    + by apply ghcDisj_free_l.
+    + by rewrite ghcUnion_free_l.
+  (* the 'less than' case *)
+  - apply ghcLt_diff in H3; auto.
+Qed.
+
+Lemma ghcDisj_le :
+  forall ghc1 ghc2 ghc3,
+  ghcValid ghc1 ->
+  ghcDisj ghc2 ghc3 ->
+  ghcLe ghc1 ghc2 ->
+  ghcDisj ghc1 ghc3.
+Proof.
+  intros ghc1 ghc2 ghc3 H1 H2 H3.
+  apply ghcLe_lt_or_eq in H3.
+  destruct H3 as [H3|H3]; vauto.
+  by apply ghcDisj_lt with ghc2.
+Qed.
+
+
 (** *** Entirety *)
 
 (** Any permission heap cell [phc] is said to be _entire_
@@ -770,6 +1377,14 @@ Definition phcEntire (phc : PermHeapCell) : Prop :=
     | PHCfree
     | PHCinvalid => False
     | PHCstd q _ => q = perm_full
+  end.
+
+
+Definition ghcEntire (ghc : GuardHeapCell) : Prop :=
+  match ghc with
+    | GHCfree
+    | GHCinvalid => False
+    | GHCstd q => q = perm_full
   end.
 
 Lemma phcEntire_union_l :
@@ -861,6 +1476,98 @@ Proof.
   intros phc H.
   unfold phcEntire in H.
   unfold phcLt. desf.
+Qed.
+
+
+Lemma ghcEntire_union_l :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 ->
+  ghcEntire ghc1 ->
+  ghcEntire (ghcUnion ghc1 ghc2).
+Proof.
+  intros ghc1 ghc2 H1 H2.
+  unfold ghcDisj in H1.
+  unfold ghcEntire in *.
+  unfold ghcUnion.
+  desf; desf; permsolve.
+Qed.
+Lemma ghcEntire_union_r :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 ->
+  ghcEntire ghc2 ->
+  ghcEntire (ghcUnion ghc1 ghc2).
+Proof.
+  intros ghc1 ghc2 H1 H2. rewrite ghcUnion_comm.
+  apply ghcEntire_union_l; auto.
+  by symmetry.
+Qed.
+Lemma ghcEntire_union :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 ->
+  ghcEntire ghc1 \/ ghcEntire ghc2 ->
+  ghcEntire (ghcUnion ghc1 ghc2).
+Proof.
+  intros ghc1 ghc2 H1 H2.
+  destruct H2 as [H2|H2].
+  - by apply ghcEntire_union_l.
+  - by apply ghcEntire_union_r.
+Qed.
+
+Lemma ghcEntire_lt_neg :
+  forall ghc1 ghc2,
+  ghcValid ghc2 -> ghcEntire ghc1 -> ~ ghcLt ghc1 ghc2.
+Proof.
+  intros ghc1 ghc2 H1 H2 H3.
+  unfold ghcValid in H1.
+  unfold ghcEntire in H2.
+  unfold ghcLt in H3. repeat desf.
+  - permsolve.
+Qed.
+
+Lemma ghcEntire_le :
+  forall ghc1 ghc2,
+  ghcLe ghc1 ghc2 ->
+  ghcValid ghc2 ->
+  ghcEntire ghc1 ->
+  ghcEntire ghc2.
+Proof.
+  intros ghc1 ghc2 H1 H2 H3.
+  unfold ghcValid, perm_valid in H2.
+  unfold ghcEntire, perm_full in *.
+  desf; simpls; desf.
+  - by apply Qcle_antisym.
+Qed.
+
+Lemma ghcLe_entire_eq :
+  forall ghc1 ghc2,
+  ghcValid ghc2 ->
+  ghcEntire ghc1 ->
+  ghcLe ghc1 ghc2 ->
+  ghc1 = ghc2.
+Proof.
+  intros ghc1 ghc2 H1 H2 H3.
+  apply ghcLe_lt_or_eq in H3.
+  destruct H3 as [H3|H3]; vauto.
+  by apply ghcEntire_lt_neg in H3.
+Qed.
+
+Lemma ghcDisj_entire_free :
+  forall ghc1 ghc2,
+  ghcDisj ghc1 ghc2 -> ghcEntire ghc1 -> ghc2 = GHCfree.
+Proof.
+  intros ghc1 ghc2 H1 H2.
+  unfold ghcDisj in H1.
+  unfold ghcEntire in H2.
+  repeat desf; permsolve.
+Qed.
+
+Lemma ghcLt_entire_free :
+  forall ghc,
+  ghcEntire ghc -> ghcLt GHCfree ghc.
+Proof.
+  intros ghc H.
+  unfold ghcEntire in H.
+  unfold ghcLt. desf.
 Qed.
 
 
@@ -1277,15 +1984,31 @@ Qed.
 
 Definition PermHeap := Val -> PermHeapCell.
 
+Inductive Guard :=
+  | GGuard(t a: Val).
+
+Lemma guard_eq_dec :
+    forall x y : Guard, {x = y} + {x <> y}.
+Proof.
+  decide equality; apply val_eq_dec.
+Qed.
+
+Definition GuardHeap := Guard -> GuardHeapCell.
+
 (** The identity permission heap is free at every location *)
 
 Definition phIden : PermHeap := fun _ => PHCfree.
+
+Definition ghIden : GuardHeap := fun _ => GHCfree.
 
 (** An update operation for process maps: *)
 
 Definition phUpdate (ph : PermHeap)(v : Val)(c : PermHeapCell) :=
   update val_eq_dec ph v c.
 
+
+Definition ghUpdate (gh : GuardHeap)(v : Guard)(c : GuardHeapCell) :=
+  update guard_eq_dec gh v c.
 
 (** *** Validity *)
 
@@ -1299,12 +2022,26 @@ Notation "√ ph" :=
   (phValid ph)
   (only printing, at level 80).
 
+
+Definition ghValid (gh : GuardHeap) : Prop :=
+  forall l, ghcValid (gh l).
+
+Notation "√ gh" :=
+  (ghValid gh)
+  (only printing, at level 80).
+
 (** The identity permission heap is valid. *)
 
 Lemma phValid_iden : phValid phIden.
 Proof. red. ins. Qed.
 
 Hint Resolve phValid_iden : core.
+
+
+Lemma ghValid_iden : ghValid ghIden.
+Proof. red. ins. Qed.
+
+Hint Resolve ghValid_iden : core.
 
 (** Updating a valid permission heap with a valid entry
     results in a valid permission heap. *)
@@ -1314,6 +2051,14 @@ Lemma phValid_update :
   phValid ph -> phcValid phc -> phValid (phUpdate ph l phc).
 Proof.
   intros ??????. unfold phUpdate, update. desf.
+Qed.
+
+
+Lemma ghValid_update :
+  forall gh ghc l,
+  ghValid gh -> ghcValid ghc -> ghValid (ghUpdate gh l ghc).
+Proof.
+  intros ??????. unfold ghUpdate, update. desf.
 Qed.
 
 
@@ -1329,9 +2074,20 @@ Notation "ph1 ⟂ ph2" :=
   (phDisj ph1 ph2)
   (only printing, at level 80).
 
+
+Definition ghDisj : relation GuardHeap :=
+  pointwise_relation Guard ghcDisj.
+
+Notation "gh1 ⟂ gh2" :=
+  (ghDisj gh1 gh2)
+  (only printing, at level 80).
+
 (** Permission heap disjointness is symmeric. *)
 
 Global Instance phDisj_symm : Symmetric phDisj.
+Proof. intros ????. by symmetry. Qed.
+
+Global Instance ghDisj_symm : Symmetric ghDisj.
 Proof. intros ????. by symmetry. Qed.
 
 (** Permission heap disjointness implies validity. *)
@@ -1348,6 +2104,21 @@ Proof.
   intros ph1 ph2 H. split.
   - by apply phDisj_valid_l with ph2.
   - by apply phDisj_valid_r with ph1.
+Qed.
+
+
+Lemma ghDisj_valid_l :
+  forall gh1 gh2, ghDisj gh1 gh2 -> ghValid gh1.
+Proof. intros ? gh ? l. by apply ghcDisj_valid_l with (gh l). Qed.
+Lemma ghDisj_valid_r :
+  forall gh1 gh2, ghDisj gh1 gh2 -> ghValid gh2.
+Proof. intros gh ?? l. by apply ghcDisj_valid_r with (gh l). Qed.
+Lemma ghDisj_valid :
+  forall gh1 gh2, ghDisj gh1 gh2 -> ghValid gh1 /\ ghValid gh2.
+Proof.
+  intros gh1 gh2 H. split.
+  - by apply ghDisj_valid_l with gh2.
+  - by apply ghDisj_valid_r with gh1.
 Qed.
 
 (** Any valid permission heap is disjoint
@@ -1367,6 +2138,22 @@ Proof.
 Qed.
 
 Hint Resolve phDisj_iden_l phDisj_iden_r : core.
+
+
+Lemma ghDisj_iden_l :
+  forall gh, ghValid gh -> ghDisj gh ghIden.
+Proof.
+  unfold ghValid, ghIden.
+  intros ???. by apply ghcDisj_free_l.
+Qed.
+Lemma ghDisj_iden_r :
+  forall gh, ghValid gh -> ghDisj ghIden gh.
+Proof.
+  unfold ghValid, ghIden.
+  intros ???. by apply ghcDisj_free_r.
+Qed.
+
+Hint Resolve ghDisj_iden_l ghDisj_iden_r : core.
 
 (** Updating disjoint permission heaps with entries
     that are disjoint preserves heap disjointness. *)
@@ -1390,6 +2177,25 @@ Proof.
 Qed.
 
 
+Lemma ghDisj_upd :
+  forall gh1 gh2 ghc1 ghc2 l,
+  ghcDisj ghc1 ghc2 ->
+  ghDisj gh1 gh2 ->
+  ghDisj (ghUpdate gh1 l ghc1) (ghUpdate gh2 l ghc2).
+Proof.
+  unfold phDisj, ghUpdate, update.
+  intros ????????. desf.
+Qed.
+
+Add Parametric Morphism : ghUpdate
+  with signature ghDisj ==> eq ==> ghcDisj ==> ghDisj
+    as ghDisj_upd_mor.
+Proof.
+  intros gh1 gh1' H1 v gh2 gh2' H2.
+  by apply ghDisj_upd.
+Qed.
+
+
 (** *** Union *)
 
 (** The (disjoint) union of two permission heaps is defined
@@ -1400,6 +2206,14 @@ Definition phUnion (ph1 ph2 : PermHeap) : PermHeap :=
 
 Notation "ph1 ⨄ ph2" :=
   (phUnion ph1 ph2)
+  (only printing, at level 80, right associativity).
+
+
+Definition ghUnion (gh1 gh2 : GuardHeap) : GuardHeap :=
+  fun l => ghcUnion (gh1 l) (gh2 l).
+
+Notation "gh1 ⨄ gh2" :=
+  (ghUnion gh1 gh2)
   (only printing, at level 80, right associativity).
 
 (** Identity laws for disjoint union. *)
@@ -1421,6 +2235,24 @@ Qed.
 
 Hint Rewrite phUnion_iden_l phUnion_iden_r : core.
 
+
+Lemma ghUnion_iden_l :
+  forall gh, ghUnion gh ghIden = gh.
+Proof.
+  intro gh. extensionality l.
+  unfold ghUnion, ghIden.
+  apply ghcUnion_free_l.
+Qed.
+Lemma ghUnion_iden_r :
+  forall gh, ghUnion ghIden gh = gh.
+Proof.
+  intro gh. extensionality l.
+  unfold ghUnion, ghIden.
+  apply ghcUnion_free_r.
+Qed.
+
+Hint Rewrite ghUnion_iden_l ghUnion_iden_r : core.
+
 (** Disjoint union is associative and commutative. *)
 
 Lemma phUnion_assoc :
@@ -1439,6 +2271,23 @@ Proof.
   by apply phcUnion_comm.
 Qed.
 
+
+Lemma ghUnion_assoc :
+  forall gh1 gh2 gh3,
+  ghUnion (ghUnion gh1 gh2) gh3 = ghUnion gh1 (ghUnion gh2 gh3).
+Proof.
+  intros ???. extensionality l.
+  unfold ghUnion.
+  by rewrite ghcUnion_assoc.
+Qed.
+
+Lemma ghUnion_comm :
+  forall gh1 gh2, ghUnion gh1 gh2 = ghUnion gh2 gh1.
+Proof.
+  intros ??. extensionality l.
+  by apply ghcUnion_comm.
+Qed.
+
 (** The union of any two disjoint permission heaps is valid. *)
 
 Lemma phUnion_valid :
@@ -1450,6 +2299,17 @@ Proof.
 Qed.
 
 Hint Resolve phUnion_valid : core.
+
+
+Lemma ghUnion_valid :
+  forall gh1 gh2,
+  ghDisj gh1 gh2 -> ghValid (ghUnion gh1 gh2).
+Proof.
+  unfold ghUnion. intros ????.
+  by apply ghcUnion_valid.
+Qed.
+
+Hint Resolve ghUnion_valid : core.
 
 (** Below are various other useful properties of disjoint union. *)
 
@@ -1582,6 +2442,135 @@ Proof.
 Qed.
 
 
+Lemma ghDisj_union_l :
+  forall gh1 gh2 gh3,
+  ghDisj gh1 gh2 ->
+  ghDisj (ghUnion gh1 gh2) gh3 ->
+  ghDisj gh2 gh3.
+Proof.
+  intros gh1 gh2 gh3 H1 H2 l.
+  apply ghcDisj_union_l with (gh1 l); auto.
+  by apply H2.
+Qed.
+Lemma ghDisj_union_r :
+  forall gh1 gh2 gh3,
+  ghDisj gh2 gh3 ->
+  ghDisj gh1 (ghUnion gh2 gh3) ->
+  ghDisj gh1 gh2.
+Proof.
+  intros gh1 gh2 gh3 H1 H2 l.
+  apply ghcDisj_union_r with (gh3 l); auto.
+  by apply H2.
+Qed.
+
+Lemma ghDisj_assoc_l :
+  forall gh1 gh2 gh3,
+  ghDisj gh1 gh2 ->
+  ghDisj (ghUnion gh1 gh2) gh3 ->
+  ghDisj gh1 (ghUnion gh2 gh3).
+Proof.
+  intros ???? H ?.
+  apply ghcDisj_assoc_l. auto. apply H.
+Qed.
+Lemma ghDisj_assoc_r :
+  forall gh1 gh2 gh3,
+  ghDisj gh2 gh3 ->
+  ghDisj gh1 (ghUnion gh2 gh3) ->
+  ghDisj (ghUnion gh1 gh2) gh3.
+Proof.
+  intros ???? H ?.
+  apply ghcDisj_assoc_r. auto. apply H.
+Qed.
+
+Lemma ghUnion_update :
+  forall gh1 gh2 ghc1 ghc2 l,
+  ghUpdate (ghUnion gh1 gh2) l (ghcUnion ghc1 ghc2) =
+  ghUnion (ghUpdate gh1 l ghc1) (ghUpdate gh2 l ghc2).
+Proof.
+  ins. extensionality l'.
+  unfold ghUnion, ghUpdate, update. desf.
+Qed.
+
+Lemma ghUnion_cell :
+  forall gh1 gh2 l,
+  ghcUnion (gh1 l) (gh2 l) = ghUnion gh1 gh2 l.
+Proof. ins. Qed.
+
+Lemma ghDisj_middle :
+  forall gh1 gh2 gh3 gh4,
+  ghDisj gh1 gh2 ->
+  ghDisj gh3 gh4 ->
+  ghDisj (ghUnion gh1 gh2) (ghUnion gh3 gh4) ->
+  ghDisj gh2 gh3.
+Proof.
+  intros gh1 gh2 gh3 gh4 H1 H2 H3.
+  apply ghDisj_union_l with gh1; auto.
+  by apply ghDisj_union_r with gh4.
+Qed.
+
+Lemma ghDisj_compat :
+  forall gh1 gh2 gh3 gh4,
+  ghDisj gh1 gh3 ->
+  ghDisj gh2 gh4 ->
+  ghDisj (ghUnion gh1 gh3) (ghUnion gh2 gh4) ->
+  ghDisj (ghUnion gh1 gh2) (ghUnion gh3 gh4).
+Proof.
+  intros gh1 gh2 gh3 gh4 H1 H2 H3.
+  apply ghDisj_assoc_r.
+  rewrite ghUnion_comm.
+  apply ghDisj_assoc_l; auto.
+  symmetry. by apply ghDisj_union_l in H3.
+  rewrite ghUnion_comm.
+  rewrite ghUnion_assoc.
+  apply ghDisj_assoc_l; auto.
+  by rewrite ghUnion_comm with gh4 gh2.
+Qed.
+
+Lemma ghUnion_swap_l :
+  forall gh1 gh2 gh3,
+  ghUnion gh1 (ghUnion gh2 gh3) =
+  ghUnion gh2 (ghUnion gh1 gh3).
+Proof.
+  intros gh1 gh2 gh3.
+  rewrite <- ghUnion_assoc.
+  rewrite ghUnion_comm with gh1 gh2.
+  by rewrite ghUnion_assoc.
+Qed.
+Lemma ghUnion_swap_r :
+  forall gh1 gh2 gh3,
+  ghUnion (ghUnion gh1 gh2) gh3 =
+  ghUnion (ghUnion gh1 gh3) gh2.
+Proof.
+  intros gh1 gh2 gh3.
+  rewrite ghUnion_comm.
+  rewrite ghUnion_swap_l.
+  by rewrite ghUnion_assoc.
+Qed.
+
+Lemma ghUnion_compat :
+  forall gh1 gh2 gh3 gh4,
+  ghUnion (ghUnion gh1 gh3) (ghUnion gh2 gh4) =
+  ghUnion (ghUnion gh1 gh2) (ghUnion gh3 gh4).
+Proof.
+  intros gh1 gh2 gh3 gh4.
+  rewrite ghUnion_swap_l.
+  repeat rewrite <- ghUnion_assoc.
+  by rewrite ghUnion_comm with gh2 gh1.
+Qed.
+
+Lemma ghUnion_update_free :
+  forall gh1 gh2 ghc l,
+  gh2 l = GHCfree ->
+  ghUnion (ghUpdate gh1 l ghc) gh2 =
+  ghUpdate (ghUnion gh1 gh2) l ghc.
+Proof.
+  intros gh1 gh2 ghc l H1.
+  extensionality l'.
+  unfold ghUpdate, update, ghUnion. desf.
+  by rewrite H1, ghcUnion_free_l.
+Qed.
+
+
 (** *** Concretisation *)
 
 (** The _concretisation_ of a permission heap [ph]
@@ -1682,6 +2671,10 @@ Qed.
 
 Definition phFinite (ph : PermHeap) : Prop :=
   exists xs : list Val, forall l, ph l <> PHCfree -> In l xs.
+
+
+Definition ghFinite (gh : GuardHeap) : Prop :=
+  exists xs : list Guard, forall l, gh l <> GHCfree -> In l xs.
 
 (** The main property of interest of finite permission heaps,
     is that one can always find a mapping that is free. *)
