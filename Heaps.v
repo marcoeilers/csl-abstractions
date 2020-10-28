@@ -5,7 +5,6 @@ Require Import PermSolver.
 Require Import Permutation.
 Require Import PermutationTactic.
 Require Import Prelude.
-Require Import Process.
 Require Import QArith.
 Require Import Qcanon.
 Require Import Setoid.
@@ -97,8 +96,6 @@ Qed.
 Inductive PermHeapCell :=
   | PHCfree
   | PHCstd(q : Qc)(v : Val)
-  | PHCproc(q : Qc)(v : Val)
-  | PHCact(q : Qc)(v v' : Val)
   | PHCinvalid.
 
 Add Search Blacklist "PermHeapCell_rect".
@@ -116,9 +113,7 @@ Add Search Blacklist "PermHeapCell_sind".
 Definition phcValid (phc : PermHeapCell) : Prop :=
   match phc with
     | PHCfree => True
-    | PHCstd q _
-    | PHCproc q _
-    | PHCact q _ _ => perm_valid q
+    | PHCstd q _ => perm_valid q
     | PHCinvalid => False
   end.
 
@@ -158,14 +153,6 @@ Definition phcDisj (phc1 phc2 : PermHeapCell) : Prop :=
     | phc, PHCfree => phcValid phc
     | PHCstd q1 v1, PHCstd q2 v2 =>
         perm_disj q1 q2 /\ v1 = v2
-    | PHCstd _ _, _
-    | _, PHCstd _ _ => False
-    | PHCproc q1 v1, PHCproc q2 v2 =>
-        perm_disj q1 q2 /\ v1 = v2
-    | PHCproc _ _, _
-    | _, PHCproc _ _ => False
-    | PHCact q1 v1 v1', PHCact q2 v2 v2' =>
-        perm_disj q1 q2 /\ v1 = v2 /\ v1' = v2'
   end.
 
 Notation "phc1 ⟂ phc2" :=
@@ -240,18 +227,6 @@ Definition phcUnion (phc1 phc2 : PermHeapCell) : PermHeapCell :=
     | PHCstd q1 v1, PHCstd q2 v2 =>
         if val_eq_dec v1 v2
         then PHCstd (q1 + q2) v1
-        else PHCinvalid
-    | PHCstd _ _, _
-    | _, PHCstd _ _ => PHCinvalid
-    | PHCproc q1 v1, PHCproc q2 v2 =>
-        if val_eq_dec v1 v2
-        then PHCproc (q1 + q2) v1
-        else PHCinvalid
-    | PHCproc _ _, _
-    | _, PHCproc _ _ => PHCinvalid
-    | PHCact q1 v1 v1', PHCact q2 v2 v2' =>
-        if val_pair_eq_dec (v1, v1') (v2, v2')
-        then PHCact (q1 + q2) v1 v1'
         else PHCinvalid
   end.
 
@@ -439,9 +414,7 @@ Definition phcLt (phc1 phc2 : PermHeapCell) : Prop :=
   match phc1, phc2 with
     | PHCfree, PHCfree => False
     | PHCfree, _ => True
-    | PHCstd q1 v1, PHCstd q2 v2
-    | PHCproc q1 v1, PHCproc q2 v2 => q1 < q2 /\ v1 = v2
-    | PHCact q1 v1 v1', PHCact q2 v2 v2' => q1 < q2 /\ v1 = v2 /\ v1' = v2'
+    | PHCstd q1 v1, PHCstd q2 v2 => q1 < q2 /\ v1 = v2
     | _, _ => False
   end.
 
@@ -457,16 +430,12 @@ Proof.
   red. red. intros phc H.
   unfold phcLt in H. repeat desf.
   - by apply Qclt_irrefl with q.
-  - by apply Qclt_irrefl with q.
-  - by apply Qclt_irrefl with q.
 Qed.
 Global Instance phcLt_trans : Transitive phcLt.
 Proof.
   red. intros phc1 phc2 phc3 H1 H2.
   unfold phcLt in *.
   repeat desf; intuition vauto.
-  - by apply Qclt_trans with q1.
-  - by apply Qclt_trans with q1.
   - by apply Qclt_trans with q1.
 Qed.
 Global Instance phcLt_asymm : Asymmetric phcLt.
@@ -491,8 +460,6 @@ Proof.
   unfold phcLt in *. unfold phcUnion.
   repeat desf; simpls; intuition vauto.
   - permsolve.
-  - permsolve.
-  - permsolve.
 Qed.
 
 Lemma phcLt_mono_l :
@@ -506,16 +473,6 @@ Proof.
   (* [phc3] is free *)
   - by repeat rewrite phcUnion_free_r.
   (* [phc3] is a standard heap cell *)
-  - unfold phcDisj, phcUnion, phcLt in *.
-    repeat desf; intuition.
-    + permsolve.
-    + clear H1. by apply Qcplus_lt_mono_l.
-  (* [phc3] is a process heap cell *)
-  - unfold phcDisj, phcUnion, phcLt in *.
-    repeat desf; intuition.
-    + permsolve.
-    + clear H1. by apply Qcplus_lt_mono_l.
-  (* [phc3] is an action heap cell *)
   - unfold phcDisj, phcUnion, phcLt in *.
     repeat desf; intuition.
     + permsolve.
@@ -545,24 +502,10 @@ Proof.
   unfold phcLt in H3. repeat desf; vauto.
   (* [phc1] is free and [phc2] a 'standard' cell *)
   - exists (PHCstd q v). vauto.
-  (* [phc1] is free and [phc2] a 'process' cell *)
-  - exists (PHCproc q v). vauto.
-  (* [phc1] is free and [phc2] an 'action' cell *)
-  - exists (PHCact q v v'). vauto.
   (* [phc1] and [phc2] are both 'standard' cells *)
   - apply perm_lt_diff in H3; auto.
     destruct H3 as (q'&H3&H4); vauto.
     exists (PHCstd q' v0). intuition vauto.
-    unfold phcUnion. desf.
-  (* [phc1] and [phc2] are both 'process' cells *)
-  - apply perm_lt_diff in H3; auto.
-    destruct H3 as (q'&H3&H4); vauto.
-    exists (PHCproc q' v0). intuition vauto.
-    unfold phcUnion. desf.
-  (* [phc1] and [phc2] are both 'action' cells *)
-  - apply perm_lt_diff in H3; vauto.
-    destruct H3 as (q'&H3&H4); vauto.
-    exists (PHCact q' v0 v'0). intuition vauto.
     unfold phcUnion. desf.
 Qed.
 
@@ -581,8 +524,6 @@ Proof.
   unfold phcDisj, phcValid in *.
   repeat desf; intuition vauto.
   - by apply perm_disj_lt with q1.
-  - by apply perm_disj_lt with q1.
-  - by apply perm_disj_lt with q1.
 Qed.
 
 (** The following partial order defines the 'less than or equal to'
@@ -591,9 +532,7 @@ Qed.
 Definition phcLe (phc1 phc2 : PermHeapCell) : Prop :=
   match phc1, phc2 with
     | PHCfree, _ => True
-    | PHCstd q1 v1, PHCstd q2 v2
-    | PHCproc q1 v1, PHCproc q2 v2 => q1 <= q2 /\ v1 = v2
-    | PHCact q1 v1 v1', PHCact q2 v2 v2' => q1 <= q2 /\ v1 = v2 /\ v1' = v2'
+    | PHCstd q1 v1, PHCstd q2 v2 => q1 <= q2 /\ v1 = v2
     | PHCinvalid, PHCinvalid => True
     | _, _ => False
   end.
@@ -620,8 +559,6 @@ Proof.
   unfold phcLt in H.
   unfold phcLe. repeat desf; intuition vauto.
   - by apply Qclt_le_weak.
-  - by apply Qclt_le_weak.
-  - by apply Qclt_le_weak.
 Qed.
 
 Lemma phcLe_lt_or_eq :
@@ -633,8 +570,6 @@ Proof.
   (* left-to-right *)
   - unfold phcLe in H. repeat desf; vauto.
     + destruct phc2; vauto.
-    + apply Qcle_lt_or_eq in H. desf; vauto.
-    + apply Qcle_lt_or_eq in H. desf; vauto.
     + apply Qcle_lt_or_eq in H. desf; vauto.
   (* right-to-left *)
   - destruct H as [H|H]; vauto.
@@ -834,9 +769,7 @@ Definition phcEntire (phc : PermHeapCell) : Prop :=
   match phc with
     | PHCfree
     | PHCinvalid => False
-    | PHCstd q _
-    | PHCproc q _
-    | PHCact q _ _ => q = perm_full
+    | PHCstd q _ => q = perm_full
   end.
 
 Lemma phcEntire_union_l :
@@ -882,8 +815,6 @@ Proof.
   unfold phcEntire in H2.
   unfold phcLt in H3. repeat desf.
   - permsolve.
-  - permsolve.
-  - permsolve.
 Qed.
 
 Lemma phcEntire_le :
@@ -897,8 +828,6 @@ Proof.
   unfold phcValid, perm_valid in H2.
   unfold phcEntire, perm_full in *.
   desf; simpls; desf.
-  - by apply Qcle_antisym.
-  - by apply Qcle_antisym.
   - by apply Qcle_antisym.
 Qed.
 
@@ -945,9 +874,7 @@ Definition phcConcr (phc : PermHeapCell) : option Val :=
   match phc with
     | PHCfree
     | PHCinvalid => None
-    | PHCstd _ v
-    | PHCproc _ v
-    | PHCact _ v _ => Some v
+    | PHCstd _ v => Some v
   end.
 
 Lemma phcConcr_lt_none :
@@ -1060,8 +987,6 @@ Definition phcSnapshot (phc : PermHeapCell) : option Val :=
     | PHCfree
     | PHCinvalid
     | PHCstd _ _  => None
-    | PHCproc _ v
-    | PHCact _ _ v => Some v
   end.
 
 (** Below are several useful properties of snapshot extraction. *)
@@ -1181,40 +1106,12 @@ Qed.
 Definition phcConvStd (phc : PermHeapCell) : PermHeapCell :=
   match phc with
     | PHCfree => PHCfree
-    | PHCstd q v
-    | PHCproc q v
-    | PHCact q v _ => PHCstd q v
+    | PHCstd q v => PHCstd q v
     | PHCinvalid => PHCinvalid
   end.
 
 Notation "'std' { phc }" :=
   (phcConvStd phc)
-  (only printing, at level 40).
-
-Definition phcConvProc (phc : PermHeapCell) : PermHeapCell :=
-  match phc with
-    | PHCfree => PHCfree
-    | PHCstd q v
-    | PHCproc q v
-    | PHCact q v _ => PHCproc q v
-    | PHCinvalid => PHCinvalid
-  end.
-
-Notation "'proc' { phc }" :=
-  (phcConvProc phc)
-  (only printing, at level 40).
-
-Definition phcConvAct (phc : PermHeapCell) : PermHeapCell :=
-  match phc with
-    | PHCfree => PHCfree
-    | PHCstd q v
-    | PHCproc q v => PHCact q v v
-    | PHCact q v1 v2 => PHCact q v1 v2
-    | PHCinvalid => PHCinvalid
-  end.
-
-Notation "'act' { phc }" :=
-  (phcConvAct phc)
   (only printing, at level 40).
 
 (** Converting any heap cell to its original types does not
@@ -1223,78 +1120,36 @@ Notation "'act' { phc }" :=
 Lemma phc_std_conv :
   forall q v, PHCstd q v = phcConvStd (PHCstd q v).
 Proof. ins. Qed.
-Lemma phc_proc_conv :
-  forall q v, PHCproc q v = phcConvProc (PHCproc q v).
-Proof. ins. Qed.
-Lemma phc_act_conv :
-  forall q v v', PHCact q v v' = phcConvAct (PHCact q v v').
-Proof. ins. Qed.
 
 (** Heap cell conversion is idempotent. *)
 
 Lemma phcConvStd_idemp :
   forall phc, phcConvStd (phcConvStd phc) = phcConvStd phc.
 Proof. intro phc. unfold phcConvStd. desf. Qed.
-Lemma phcConvProc_idemp :
-  forall phc, phcConvProc (phcConvProc phc) = phcConvProc phc.
-Proof. intro phc. unfold phcConvProc. desf. Qed.
-Lemma phcConvAct_idemp :
-  forall phc, phcConvAct (phcConvAct phc) = phcConvAct phc.
-Proof. intro phc. unfold phcConvAct. desf. Qed.
 
 (** Free heap cells always convert to free heap cells. *)
 
 Lemma phcConvStd_free :
   phcConvStd PHCfree = PHCfree.
 Proof. ins. Qed.
-Lemma phcConvProc_free :
-  phcConvProc PHCfree = PHCfree.
-Proof. ins. Qed.
-Lemma phcConvAct_free :
-  phcConvAct PHCfree = PHCfree.
-Proof. ins. Qed.
 Lemma phcConvStd_free2 :
   forall phc, phcConvStd phc = PHCfree <-> phc = PHCfree.
 Proof. unfold phcConvStd. intuition desf. Qed.
-Lemma phcConvProc_free2 :
-  forall phc, phcConvProc phc = PHCfree <-> phc = PHCfree.
-Proof. unfold phcConvProc. intuition desf. Qed.
-Lemma phcConvAct_free2 :
-  forall phc, phcConvAct phc = PHCfree <-> phc = PHCfree.
-Proof. unfold phcConvAct. intuition desf. Qed.
 
 (** Invalid heap cells always convert to invalid heap cells. *)
 
 Lemma phcConvStd_invalid :
   phcConvStd PHCinvalid = PHCinvalid.
 Proof. ins. Qed.
-Lemma phcConvProc_invalid :
-  phcConvProc PHCinvalid = PHCinvalid.
-Proof. ins. Qed.
-Lemma phcConvAct_invalid :
-  phcConvAct PHCinvalid = PHCinvalid.
-Proof. ins. Qed.
 Lemma phcConvStd_invalid2 :
   forall phc, phcConvStd phc = PHCinvalid <-> phc = PHCinvalid.
 Proof. unfold phcConvStd. intuition desf. Qed.
-Lemma phcConvProc_invalid2 :
-  forall phc, phcConvProc phc = PHCinvalid <-> phc = PHCinvalid.
-Proof. unfold phcConvProc. intuition desf. Qed.
-Lemma phcConvAct_invalid2 :
-  forall phc, phcConvAct phc = PHCinvalid <-> phc = PHCinvalid.
-Proof. unfold phcConvAct. intuition desf. Qed.
 
 (** Heap cell conversion preserves validity. *)
 
 Lemma phcConvStd_valid :
   forall phc, phcValid phc <-> phcValid (phcConvStd phc).
 Proof. ins. unfold phcValid, phcConvStd. intuition desf. Qed.
-Lemma phcConvProc_valid :
-  forall phc, phcValid phc <-> phcValid (phcConvProc phc).
-Proof. ins. unfold phcValid, phcConvProc. intuition desf. Qed.
-Lemma phcConvAct_valid :
-  forall phc, phcValid phc <-> phcValid (phcConvAct phc).
-Proof. ins. unfold phcValid, phcConvAct. intuition desf. Qed.
 
 (** Heap cell conversion preserves disjointness. *)
 
@@ -1304,30 +1159,12 @@ Proof.
   ins. unfold phcDisj in *. unfold phcConvStd.
   repeat desf; intuition simpls; auto.
 Qed.
-Add Parametric Morphism : phcConvProc
-  with signature phcDisj ==> phcDisj as phcConvProc_disj.
-Proof.
-  ins. unfold phcDisj in *. unfold phcConvProc.
-  repeat desf; intuition simpls; auto.
-Qed.
-Add Parametric Morphism : phcConvAct
-  with signature phcDisj ==> phcDisj as phcConvAct_disj.
-Proof.
-  ins. unfold phcDisj in *. unfold phcConvAct.
-  repeat desf; intuition simpls; auto.
-Qed.
 
 (** Heap cell conversion preserves entirety. *)
 
 Lemma phcConvStd_entire :
   forall phc, phcEntire (phcConvStd phc) <-> phcEntire phc.
 Proof. ins. unfold phcEntire, phcConvStd. intuition desf. Qed.
-Lemma phcConvProc_entire :
-  forall phc, phcEntire (phcConvProc phc) <-> phcEntire phc.
-Proof. ins. unfold phcEntire, phcConvProc. intuition desf. Qed.
-Lemma phcConvAct_entire :
-  forall phc, phcEntire (phcConvAct phc) <-> phcEntire phc.
-Proof. ins. unfold phcEntire, phcConvAct. intuition desf. Qed.
 
 (** Below are several other properties of heap cell conversion
     for later convenience. *)
@@ -1347,30 +1184,6 @@ Proof.
   - unfold phcConvStd. unfold phcDisj in *.
     repeat desf; simpls; intuition vauto.
 Qed.
-Lemma phcLt_conv_proc_disj :
-  forall phc2 phc3 q v,
-  phcValid phc2 ->
-  phcLt (PHCproc q v) phc2 ->
-  phcDisj (phcConvProc phc2) phc3 <-> phcDisj phc2 phc3.
-Proof.
-  intros phc2 phc3 q v V1 H1. split; intro D1.
-  - unfold phcConvProc in D1. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-  - unfold phcConvProc. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-Qed.
-Lemma phcLt_conv_act_disj :
-  forall phc2 phc3 q v1 v2,
-  phcValid phc2 ->
-  phcLt (PHCact q v1 v2) phc2 ->
-  phcDisj (phcConvAct phc2) phc3 <-> phcDisj phc2 phc3.
-Proof.
-  intros phc2 phc3 q v1 v2 V1 H1. split; intro D1.
-  - unfold phcConvAct in D1. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-  - unfold phcConvAct. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-Qed.
 
 Lemma phcLe_conv_std_disj :
   forall phc2 phc3 q v,
@@ -1382,31 +1195,6 @@ Proof.
   - unfold phcConvStd in D1. unfold phcDisj in *.
     repeat desf; simpls; intuition vauto.
   - unfold phcConvStd. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-Qed.
-Lemma phcLe_conv_proc_disj :
-  forall phc2 phc3 q v,
-  phcValid phc2 ->
-  phcLe (PHCproc q v) phc2 ->
-  phcDisj (phcConvProc phc2) phc3 <->
-  phcDisj phc2 phc3.
-Proof.
-  intros phc2 phc3 q v V1 H1. split; intro D1.
-  - unfold phcConvProc in D1. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-  - unfold phcConvProc. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-Qed.
-Lemma phcLe_conv_act_disj :
-  forall phc2 phc3 q v v',
-  phcValid phc2 ->
-  phcLe (PHCact q v v') phc2 ->
-  phcDisj (phcConvAct phc2) phc3 <-> phcDisj phc2 phc3.
-Proof.
-  intros phc2 phc3 q v v' V1 H1. split; intro D1.
-  - unfold phcConvAct in D1. unfold phcDisj in *.
-    repeat desf; simpls; intuition vauto.
-  - unfold phcConvAct. unfold phcDisj in *.
     repeat desf; simpls; intuition vauto.
 Qed.
 
@@ -1422,30 +1210,6 @@ Proof.
   replace PHCfree with (phcConvStd PHCfree); auto.
   by apply phcConvStd_disj, phcDisj_free_r.
 Qed.
-Lemma phcConvProc_disj_entire :
-  forall phc1 phc2,
-  phcEntire phc1 ->
-  phcDisj phc1 phc2 ->
-  phcDisj (phcConvProc phc1) phc2.
-Proof.
-  intros phc1 phc2 H1 H2.
-  assert (H3 : phcValid phc1) by by apply phcDisj_valid_l in H2.
-  apply phcDisj_entire_free in H2; auto. clarify.
-  replace PHCfree with (phcConvProc PHCfree); auto.
-  by apply phcConvProc_disj, phcDisj_free_r.
-Qed.
-Lemma phcConvAct_disj_entire :
-  forall phc1 phc2,
-  phcEntire phc1 ->
-  phcDisj phc1 phc2 ->
-  phcDisj (phcConvAct phc1) phc2.
-Proof.
-  intros phc1 phc2 H1 H2.
-  assert (H3 : phcValid phc1) by by apply phcDisj_valid_l in H2.
-  apply phcDisj_entire_free in H2; auto. clarify.
-  replace PHCfree with (phcConvAct PHCfree); auto.
-  by apply phcConvAct_disj, phcDisj_free_r.
-Qed.
 
 Lemma phcConvStd_union :
   forall phc1 phc2,
@@ -1455,24 +1219,6 @@ Lemma phcConvStd_union :
 Proof.
   intros phc1 phc2 H. unfold phcDisj in H.
   unfold phcConvStd, phcUnion. repeat desf.
-Qed.
-Lemma phcConvProc_union :
-  forall phc1 phc2,
-  phcDisj phc1 phc2 ->
-  phcConvProc (phcUnion phc1 phc2) =
-  phcUnion (phcConvProc phc1) (phcConvProc phc2).
-Proof.
-  intros phc1 phc2 H. unfold phcDisj in H.
-  unfold phcConvProc, phcUnion. repeat desf.
-Qed.
-Lemma phcConvAct_union :
-  forall phc1 phc2,
-  phcDisj phc1 phc2 ->
-  phcConvAct (phcUnion phc1 phc2) =
-  phcUnion (phcConvAct phc1) (phcConvAct phc2).
-Proof.
-  intros phc1 phc2 H. unfold phcDisj in H.
-  unfold phcConvAct, phcUnion. repeat desf.
 Qed.
 
 Lemma phcConvStd_lt :
@@ -1484,28 +1230,6 @@ Proof.
   intros phc1 phc2 H1 H2.
   unfold phcValid in H1.
   unfold phcConvStd, phcLt in *.
-  repeat desf.
-Qed.
-Lemma phcConvProc_lt :
-  forall phc1 phc2,
-  phcValid phc2 ->
-  phcLt phc1 phc2 ->
-  phcLt (phcConvProc phc1) (phcConvProc phc2).
-Proof.
-  intros phc1 phc2 H1 H2.
-  unfold phcValid in H1.
-  unfold phcConvProc, phcLt in *.
-  repeat desf.
-Qed.
-Lemma phcConvAct_lt :
-  forall phc1 phc2,
-  phcValid phc2 ->
-  phcLt phc1 phc2 ->
-  phcLt (phcConvAct phc1) (phcConvAct phc2).
-Proof.
-  intros phc1 phc2 H1 H2.
-  unfold phcValid in H1.
-  unfold phcConvAct, phcLt in *.
   repeat desf.
 Qed.
 
@@ -1520,55 +1244,10 @@ Proof.
   destruct H2 as [H2|H2]; vauto.
   by apply phcLt_le_weak, phcConvStd_lt.
 Qed.
-Lemma phcConvProc_le :
-  forall phc1 phc2,
-  phcValid phc2 ->
-  phcLe phc1 phc2 ->
-  phcLe (phcConvProc phc1) (phcConvProc phc2).
-Proof.
-  intros phc1 phc2 H1 H2.
-  apply phcLe_lt_or_eq in H2.
-  destruct H2 as [H2|H2]; vauto.
-  by apply phcLt_le_weak, phcConvProc_lt.
-Qed.
-Lemma phcConvAct_le :
-  forall phc1 phc2,
-  phcValid phc2 ->
-  phcLe phc1 phc2 ->
-  phcLe (phcConvAct phc1) (phcConvAct phc2).
-Proof.
-  intros phc1 phc2 H1 H2.
-  apply phcLe_lt_or_eq in H2.
-  destruct H2 as [H2|H2]; vauto.
-  by apply phcLt_le_weak, phcConvAct_lt.
-Qed.
 
 Lemma phcConvStd_concr :
   forall phc, phcConcr (phcConvStd phc) = phcConcr phc.
 Proof. ins. unfold phcConcr, phcConvStd. desf. Qed.
-Lemma phcConvProc_concr :
-  forall phc, phcConcr (phcConvProc phc) = phcConcr phc.
-Proof. ins. unfold phcConcr, phcConvProc. desf. Qed.
-Lemma phcConvAct_concr :
-  forall phc, phcConcr (phcConvAct phc) = phcConcr phc.
-Proof. ins. unfold phcConcr, phcConvAct. desf. Qed.
-
-Lemma phcSnapshot_conv_proc_occ :
-  forall phc,
-  phcSnapshot phc <> None ->
-  phcSnapshot (phcConvProc phc) <> None.
-Proof.
-  intros phc H1. unfold phcSnapshot in *.
-  unfold phcConvProc. desf.
-Qed.
-Lemma phcSnapshot_conv_act_occ :
-  forall phc,
-  phcSnapshot phc <> None ->
-  phcSnapshot (phcConvAct phc) <> None.
-Proof.
-  intros phc H1. unfold phcSnapshot in *.
-  unfold phcConvAct. desf.
-Qed.
 
 Lemma phcSnapshot_lt_conv_std :
   forall phc1 phc2,
@@ -1577,32 +1256,6 @@ Lemma phcSnapshot_lt_conv_std :
 Proof.
   intros phc1 phc2 H1. unfold phcConvStd in *.
   unfold phcLt in H1. unfold phcSnapshot. desf.
-Qed.
-Lemma phcSnapshot_lt_conv_proc :
-  forall phc1 phc2,
-  phcLt phc1 (phcConvProc phc2) ->
-  phcSnapshot phc1 = phcSnapshot (phcConvProc phc1).
-Proof.
-  intros phc1 phc2 H1. unfold phcConvProc in *.
-  unfold phcLt in H1. unfold phcSnapshot. desf.
-Qed.
-Lemma phcSnapshot_lt_conv_act :
-  forall phc1 phc2,
-  phcLt phc1 (phcConvAct phc2) ->
-  phcSnapshot phc1 = phcSnapshot (phcConvAct phc1).
-Proof.
-  intros phc1 phc2 H1. unfold phcConvAct in *.
-  unfold phcLt in H1. unfold phcSnapshot. desf.
-Qed.
-
-Lemma phcSnapshot_conv_act_pres :
-  forall phc v,
-  phcSnapshot phc = Some v ->
-  phcSnapshot (phcConvAct phc) = Some v.
-Proof.
-  intros phc v H.
-  unfold phcSnapshot, phcConvAct in *.
-  desf.
 Qed.
 
 (** Note: the following lemmas does not hold
@@ -2131,14 +1784,8 @@ Qed.
 
 Definition phConvStd (ph : PermHeap)(l : Val) : PermHeap :=
   phUpdate ph l (phcConvStd (ph l)).
-Definition phConvProc (ph : PermHeap)(l : Val) : PermHeap :=
-  phUpdate ph l (phcConvProc (ph l)).
-Definition phConvAct (ph : PermHeap)(l : Val) : PermHeap :=
-  phUpdate ph l (phcConvAct (ph l)).
 
 Notation "'std' { ph ',' l }" := (phConvStd ph l).
-Notation "'proc' { ph ',' l }" := (phConvProc ph l).
-Notation "'act' { ph ',' l }" := (phConvAct ph l).
 
 (** Heap cell conversion is idempotent. *)
 
@@ -2148,20 +1795,6 @@ Proof.
   intros ph l. extensionality l'.
   unfold phConvStd, phUpdate, update. desf.
   by apply phcConvStd_idemp.
-Qed.
-Lemma phConvProc_idemp :
-  forall ph l, phConvProc (phConvProc ph l) l = phConvProc ph l.
-Proof.
-  intros ph l. extensionality l'.
-  unfold phConvProc, phUpdate, update. desf.
-  by apply phcConvProc_idemp.
-Qed.
-Lemma phConvAct_idemp :
-  forall ph l, phConvAct (phConvAct ph l) l = phConvAct ph l.
-Proof.
-  intros ph l. extensionality l'.
-  unfold phConvAct, phUpdate, update. desf.
-  by apply phcConvAct_idemp.
 Qed.
 
 (** Heap cell conversion preserves validity. *)
@@ -2179,32 +1812,6 @@ Proof.
     unfold phConvStd, phUpdate, update in H.
     desf. by rewrite phcConvStd_valid.
 Qed.
-Lemma phConvProc_valid :
-  forall ph l,
-  phValid ph <-> phValid (phConvProc ph l).
-Proof.
-  intros ph l. split; intros H l'.
-  - unfold phValid in *.
-    specialize H with l'.
-    unfold phConvProc, phUpdate, update. desf.
-    by rewrite <- phcConvProc_valid.
-  - unfold phValid in *. specialize H with l'.
-    unfold phConvProc, phUpdate, update in H.
-    desf. by rewrite phcConvProc_valid.
-Qed.
-Lemma phConvAct_valid :
-  forall ph l,
-  phValid ph <-> phValid (phConvAct ph l).
-Proof.
-  intros ph l. split; intros H l'.
-  - unfold phValid in *.
-    specialize H with l'.
-    unfold phConvAct, phUpdate, update. desf.
-    by rewrite <- phcConvAct_valid.
-  - unfold phValid in *. specialize H with l'.
-    unfold phConvAct, phUpdate, update in H.
-    desf. by rewrite phcConvAct_valid.
-Qed.
 
 (** Heap cell conversion preserves disjointness. *)
 
@@ -2215,22 +1822,6 @@ Proof.
   red in H1. red in H1. specialize H1 with l.
   unfold phConvStd, phUpdate, update. desf.
   by apply phcConvStd_disj.
-Qed.
-Add Parametric Morphism : phConvProc
-  with signature phDisj ==> eq ==> phDisj as phConvProc_disj.
-Proof.
-  intros ph1 ph2 H1 v. red. intro l.
-  red in H1. red in H1. specialize H1 with l.
-  unfold phConvProc, phUpdate, update. desf.
-  by apply phcConvProc_disj.
-Qed.
-Add Parametric Morphism : phConvAct
-  with signature phDisj ==> eq ==> phDisj as phConvAct_disj.
-Proof.
-  intros ph1 ph2 H1 v. red. intro l.
-  red in H1. red in H1. specialize H1 with l.
-  unfold phConvAct, phUpdate, update. desf.
-  by apply phcConvAct_disj.
 Qed.
 
 (** Heap cell conversion preserves entirety. *)
@@ -2245,26 +1836,6 @@ Proof.
   - unfold phConvStd, phUpdate, update. desf.
     by rewrite phcConvStd_entire.
 Qed.
-Lemma phConvProc_entire :
-  forall ph l l',
-  phcEntire (phConvProc ph l l') <-> phcEntire (ph l').
-Proof.
-  intros ph l l'. split; intro H.
-  - unfold phConvProc, phUpdate, update in H. desf.
-    by rewrite <- phcConvProc_entire.
-  - unfold phConvProc, phUpdate, update. desf.
-    by rewrite phcConvProc_entire.
-Qed.
-Lemma phConvAct_entire :
-  forall ph l l',
-  phcEntire (phConvAct ph l l') <-> phcEntire (ph l').
-Proof.
-  intros ph l l'. split; intro H.
-  - unfold phConvAct, phUpdate, update in H. desf.
-    by rewrite <- phcConvAct_entire.
-  - unfold phConvAct, phUpdate, update. desf.
-    by rewrite phcConvAct_entire.
-Qed.
 
 (** Heap cell conversion preserves concretisations. *)
 
@@ -2275,22 +1846,6 @@ Proof.
   intros ph l. extensionality l'.
   unfold phConcr, phConvStd, phUpdate, update. desf.
   by rewrite phcConvStd_concr.
-Qed.
-Lemma phConvProc_concr :
-  forall ph l,
-  phConcr (phConvProc ph l) = phConcr ph.
-Proof.
-  intros ph l. extensionality l'.
-  unfold phConcr, phConvProc, phUpdate, update. desf.
-  by rewrite phcConvProc_concr.
-Qed.
-Lemma phConvAct_concr :
-  forall ph l,
-  phConcr (phConvAct ph l) = phConcr ph.
-Proof.
-  intros ph l. extensionality l'.
-  unfold phConcr, phConvAct, phUpdate, update. desf.
-  by rewrite phcConvAct_concr.
 Qed.
 
 (** Heap cell conversion distributes over disjoint union. *)
@@ -2308,32 +1863,6 @@ Proof.
   unfold phUnion, phConvStd, phUpdate, update. desf.
   by apply phcConvStd_union.
 Qed.
-Lemma phConvProc_union :
-  forall ph1 ph2 l,
-  phDisj ph1 ph2 ->
-  phConvProc (phUnion ph1 ph2) l =
-  phUnion (phConvProc ph1 l) (phConvProc ph2 l).
-Proof.
-  intros ph1 ph2 l H1.
-  extensionality l'.
-  red in H1. red in H1.
-  specialize H1 with l'.
-  unfold phUnion, phConvProc, phUpdate, update. desf.
-  by apply phcConvProc_union.
-Qed.
-Lemma phConvAct_union :
-  forall ph1 ph2 l,
-  phDisj ph1 ph2 ->
-  phConvAct (phUnion ph1 ph2) l =
-  phUnion (phConvAct ph1 l) (phConvAct ph2 l).
-Proof.
-  intros ph1 ph2 l H1.
-  extensionality l'.
-  red in H1. red in H1.
-  specialize H1 with l'.
-  unfold phUnion, phConvAct, phUpdate, update. desf.
-  by apply phcConvAct_union.
-Qed.
 
 (** Free heap cells always convert to free heap cells. *)
 
@@ -2344,20 +1873,6 @@ Proof.
   unfold phConvStd, phUpdate, update. desf.
   rewrite H. by apply phcConvStd_free.
 Qed.
-Lemma phConvProc_free :
-  forall ph l, ph l = PHCfree -> phConvProc ph l = ph.
-Proof.
-  intros ph l H. extensionality l'.
-  unfold phConvProc, phUpdate, update. desf.
-  rewrite H. by apply phcConvProc_free.
-Qed.
-Lemma phConvAct_free :
-  forall ph l, ph l = PHCfree -> phConvAct ph l = ph.
-Proof.
-  intros ph l H. extensionality l'.
-  unfold phConvAct, phUpdate, update. desf.
-  rewrite H. by apply phcConvAct_free.
-Qed.
 
 Lemma phConvStd_free2 :
   forall ph l l',
@@ -2366,22 +1881,6 @@ Proof.
   intros ph l l'.
   unfold phConvStd, phUpdate, update. desf.
   by apply phcConvStd_free2.
-Qed.
-Lemma phConvProc_free2 :
-  forall ph l l',
-  (phConvProc ph l) l' = PHCfree <-> ph l' = PHCfree.
-Proof.
-  intros ph l l'.
-  unfold phConvProc, phUpdate, update. desf.
-  by apply phcConvProc_free2.
-Qed.
-Lemma phConvAct_free2 :
-  forall ph l l',
-  (phConvAct ph l) l' = PHCfree <-> ph l' = PHCfree.
-Proof.
-  intros ph l l'.
-  unfold phConvAct, phUpdate, update. desf.
-  by apply phcConvAct_free2.
 Qed.
 
 (** Any heap cell that is not converted stays the same. *)
@@ -2392,30 +1891,12 @@ Proof.
   intros ph l l' H1.
   unfold phConvStd, phUpdate, update. desf.
 Qed.
-Lemma phConvProc_pres :
-  forall ph l l', l <> l' -> ph l' = phConvProc ph l l'.
-Proof.
-  intros ph l l' H1.
-  unfold phConvProc, phUpdate, update. desf.
-Qed.
-Lemma phConvAct_pres :
-  forall ph l l', l <> l' -> ph l' = phConvAct ph l l'.
-Proof.
-  intros ph l l' H1.
-  unfold phConvAct, phUpdate, update. desf.
-Qed.
 
 (** Requesting any converted heap cell gives the converted heap cell. *)
 
 Lemma phConvStd_apply :
   forall ph l, phConvStd ph l l = phcConvStd (ph l).
 Proof. ins. unfold phConvStd, phUpdate, update. desf. Qed.
-Lemma phConvProc_apply :
-  forall ph l, phConvProc ph l l = phcConvProc (ph l).
-Proof. ins. unfold phConvProc, phUpdate, update. desf. Qed.
-Lemma phConvAct_apply :
-  forall ph l, phConvAct ph l l = phcConvAct (ph l).
-Proof. ins. unfold phConvAct, phUpdate, update. desf. Qed.
 
 (** Below are various other useful properties of heap cell conversion. *)
 
@@ -2427,52 +1908,6 @@ Proof.
   unfold phConvStd, phUpdate, update.
   desf. by apply phcConvStd_disj_entire.
 Qed.
-Lemma phConvProc_disj_entire :
-  forall ph1 ph2 l,
-  phcEntire (ph1 l) -> phDisj ph1 ph2 -> phDisj (phConvProc ph1 l) ph2.
-Proof.
-  intros ph1 ph2 l H1 H2 l'.
-  unfold phConvProc, phUpdate, update.
-  desf. by apply phcConvProc_disj_entire.
-Qed.
-Lemma phConvAct_disj_entire :
-  forall ph1 ph2 l,
-  phcEntire (ph1 l) -> phDisj ph1 ph2 -> phDisj (phConvAct ph1 l) ph2.
-Proof.
-  intros ph1 ph2 l H1 H2 l'.
-  unfold phConvAct, phUpdate, update.
-  desf. by apply phcConvAct_disj_entire.
-Qed.
-
-Lemma phConvProc_snapshot_occ :
-  forall ph l l',
-  phSnapshot ph l' <> None ->
-  phSnapshot (phConvProc ph l) l' <> None.
-Proof.
-  intros ph l l' H. unfold phSnapshot in *.
-  unfold phConvProc, phUpdate, update. desf.
-  by apply phcSnapshot_conv_proc_occ.
-Qed.
-Lemma phConvAct_snapshot_occ :
-  forall ph l l',
-  phSnapshot ph l' <> None ->
-  phSnapshot (phConvAct ph l) l' <> None.
-Proof.
-  intros ph l l' H. unfold phSnapshot in *.
-  unfold phConvAct, phUpdate, update. desf.
-  by apply phcSnapshot_conv_act_occ.
-Qed.
-
-Lemma phConvAct_snapshot_pres :
-  forall ph l l' v,
-  phSnapshot ph l' = Some v ->
-  phSnapshot (phConvAct ph l) l' = Some v.
-Proof.
-  intros ph l l' v H1. unfold phSnapshot in *.
-  unfold phConvAct, phUpdate, update. desf.
-  by apply phcSnapshot_conv_act_pres.
-Qed.
-
 
 (** *** Heap cell batch conversions *)
 
@@ -2485,43 +1920,19 @@ Fixpoint phConvStdMult (ph : PermHeap)(xs : list Val) : PermHeap :=
     | nil => ph
     | l :: xs' => phConvStd (phConvStdMult ph xs') l
   end.
-Fixpoint phConvProcMult (ph : PermHeap)(xs : list Val) : PermHeap :=
-  match xs with
-    | nil => ph
-    | l :: xs' => phConvProc (phConvProcMult ph xs') l
-  end.
-Fixpoint phConvActMult (ph : PermHeap)(xs : list Val) : PermHeap :=
-  match xs with
-    | nil => ph
-    | l :: xs' => phConvAct (phConvActMult ph xs') l
-  end.
 
 Notation "'std' { ph ';' xs }" := (phConvStdMult ph xs).
-Notation "'proc' { ph ';' xs }" := (phConvProcMult ph xs).
-Notation "'act' { ph ';' xs }" := (phConvActMult ph xs).
 
 (** Converting an empty batch of locations leaves the heap unchanged. *)
 
 Lemma phConvStdMult_nil :
   forall ph, ph = phConvStdMult ph nil.
 Proof. ins. Qed.
-Lemma phConvProcMult_nil :
-  forall ph, ph = phConvProcMult ph nil.
-Proof. ins. Qed.
-Lemma phConvActMult_nil :
-  forall ph, ph = phConvActMult ph nil.
-Proof. ins. Qed.
 
 (** Properties related to converting a single heap cell: *)
 
 Lemma phConvStdMult_single :
   forall ph l, phConvStd ph l = phConvStdMult ph [l].
-Proof. ins. Qed.
-Lemma phConvProcMult_single :
-  forall ph l, phConvProc ph l = phConvProcMult ph [l].
-Proof. ins. Qed.
-Lemma phConvActMult_single :
-  forall ph l, phConvAct ph l = phConvActMult ph [l].
 Proof. ins. Qed.
 
 (** Conversions of a non-empty batch of locations can be unfolded. *)
@@ -2530,14 +1941,6 @@ Lemma phConvStdMult_cons :
   forall xs l ph,
   phConvStdMult ph (l :: xs) = phConvStd (phConvStdMult ph xs) l.
 Proof. ins. Qed.
-Lemma phConvProcMult_cons :
-  forall xs l ph,
-  phConvProcMult ph (l :: xs) = phConvProc (phConvProcMult ph xs) l.
-Proof. ins. Qed.
-Lemma phConvActMult_cons :
-  forall xs l ph,
-  phConvActMult ph (l :: xs) = phConvAct (phConvActMult ph xs) l.
-Proof. ins. Qed.
 
 (** Conversion of two batches of locations can be appended
     into a single batch. *)
@@ -2545,20 +1948,6 @@ Proof. ins. Qed.
 Lemma phConvStdMult_app :
   forall xs ys ph,
   phConvStdMult ph (xs ++ ys) = phConvStdMult (phConvStdMult ph ys) xs.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ys ph. simpls. by rewrite IH.
-Qed.
-Lemma phConvProcMult_app :
-  forall xs ys ph,
-  phConvProcMult ph (xs ++ ys) = phConvProcMult (phConvProcMult ph ys) xs.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ys ph. simpls. by rewrite IH.
-Qed.
-Lemma phConvActMult_app :
-  forall xs ys ph,
-  phConvActMult ph (xs ++ ys) = phConvActMult (phConvActMult ph ys) xs.
 Proof.
   induction xs as [|l xs IH]; [done|].
   intros ys ph. simpls. by rewrite IH.
@@ -2576,39 +1965,11 @@ Proof.
     extensionality l'. desf.
   - by rewrite IHPermutation1, IHPermutation2.
 Qed.
-Lemma phConvProcMult_permut :
-  forall ph xs ys,
-  Permutation xs ys -> phConvProcMult ph xs = phConvProcMult ph ys.
-Proof.
-  intros ph xs ys H. induction H; vauto.
-  - simpl. by rewrite IHPermutation.
-  - simpls. unfold phConvProc, phUpdate, update.
-    extensionality l'. desf.
-  - by rewrite IHPermutation1, IHPermutation2.
-Qed.
-Lemma phConvActMult_permut :
-  forall ph xs ys,
-  Permutation xs ys -> phConvActMult ph xs = phConvActMult ph ys.
-Proof.
-  intros ph xs ys H. induction H; vauto.
-  - simpl. by rewrite IHPermutation.
-  - simpls. unfold phConvAct, phUpdate, update.
-    extensionality l'. desf.
-  - by rewrite IHPermutation1, IHPermutation2.
-Qed.
 
 Add Parametric Morphism : phConvStdMult
   with signature eq ==> @Permutation Val ==> eq
     as phConvStdMult_permut_mor.
 Proof. ins. by apply phConvStdMult_permut. Qed.
-Add Parametric Morphism : phConvProcMult
-  with signature eq ==> @Permutation Val ==> eq
-    as phConvProcMult_permut_mor.
-Proof. ins. by apply phConvProcMult_permut. Qed.
-Add Parametric Morphism : phConvActMult
-  with signature eq ==> @Permutation Val ==> eq
-    as phConvActMult_permut_mor.
-Proof. ins. by apply phConvActMult_permut. Qed.
 
 (** Batch conversions are idempotent. *)
 
@@ -2622,26 +1983,6 @@ Proof.
   rewrite H1. simpl. rewrite phConvStd_idemp.
   by rewrite phConvStdMult_app, IH.
 Qed.
-Lemma phConvProcMult_idemp :
-  forall xs ph,
-  phConvProcMult (phConvProcMult ph xs) xs = phConvProcMult ph xs.
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros ph. rewrite <- phConvProcMult_app.
-  assert (H1 : Permutation ((l' :: xs) ++ l' :: xs) (l' :: l' :: xs ++ xs)) by list_permutation.
-  rewrite H1. simpl. rewrite phConvProc_idemp.
-  by rewrite phConvProcMult_app, IH.
-Qed.
-Lemma phConvActMult_idemp :
-  forall xs ph,
-  phConvActMult (phConvActMult ph xs) xs = phConvActMult ph xs.
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros ph. rewrite <- phConvActMult_app.
-  assert (H1 : Permutation ((l' :: xs) ++ l' :: xs) (l' :: l' :: xs ++ xs)) by list_permutation.
-  rewrite H1. simpl. rewrite phConvAct_idemp.
-  by rewrite phConvActMult_app, IH.
-Qed.
 
 (** Any duplicate conversions in a batch are subsumed. *)
 
@@ -2654,24 +1995,6 @@ Proof.
   - simpls. by rewrite phConvStd_idemp.
   - rewrite perm_swap. simpls. rewrite IH; vauto.
 Qed.
-Lemma phConvProcMult_subsume :
-  forall xs l ph,
-  In l xs -> phConvProcMult ph (l :: xs) = phConvProcMult ph xs.
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros l ph H1. simpl in H1. destruct H1 as [H1|H1]; vauto.
-  - simpls. by rewrite phConvProc_idemp.
-  - rewrite perm_swap. simpls. rewrite IH; vauto.
-Qed.
-Lemma phConvActMult_subsume :
-  forall xs l ph,
-  In l xs -> phConvActMult ph (l :: xs) = phConvActMult ph xs.
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros l ph H1. simpl in H1. destruct H1 as [H1|H1]; vauto.
-  - simpls. by rewrite phConvAct_idemp.
-  - rewrite perm_swap. simpls. rewrite IH; vauto.
-Qed.
 
 (** Batch conversions preserve heap validity. *)
 
@@ -2682,22 +2005,6 @@ Proof.
   intros ph. split; intro H1.
   - simpl. apply phConvStd_valid. by rewrite <- IH.
   - simpl in H1. apply IH. by apply phConvStd_valid with l.
-Qed.
-Lemma phConvProcMult_valid :
-  forall xs ph, phValid ph <-> phValid (phConvProcMult ph xs).
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph. split; intro H1.
-  - simpl. apply phConvProc_valid. by rewrite <- IH.
-  - simpl in H1. apply IH. by apply phConvProc_valid with l.
-Qed.
-Lemma phConvActMult_valid :
-  forall xs ph, phValid ph <-> phValid (phConvActMult ph xs).
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph. split; intro H1.
-  - simpl. apply phConvAct_valid. by rewrite <- IH.
-  - simpl in H1. apply IH. by apply phConvAct_valid with l.
 Qed.
 
 (** Converting a batch of only free locations does not change the heap. *)
@@ -2716,34 +2023,6 @@ Proof.
     + apply H1. vauto.
     + intros l' H2. by apply H1, in_cons.
 Qed.
-Lemma phConvProcMult_free :
-  forall xs ph,
-  (forall l, In l xs -> ph l = PHCfree) ->
-  phConvProcMult ph xs = ph.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph H1. simpl.
-  rewrite phConvProc_free.
-  - apply IH. intros l' H2.
-    apply H1. by apply in_cons.
-  - rewrite IH.
-    + apply H1. vauto.
-    + intros l' H2. by apply H1, in_cons.
-Qed.
-Lemma phConvActMult_free :
-  forall xs ph,
-  (forall l, In l xs -> ph l = PHCfree) ->
-  phConvActMult ph xs = ph.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph H1. simpl.
-  rewrite phConvAct_free.
-  - apply IH. intros l' H2.
-    apply H1. by apply in_cons.
-  - rewrite IH.
-    + apply H1. vauto.
-    + intros l' H2. by apply H1, in_cons.
-Qed.
 
 Lemma phConvStdMult_free2 :
   forall xs ph l,
@@ -2751,22 +2030,6 @@ Lemma phConvStdMult_free2 :
 Proof.
   induction xs as [|l' xs IH]; [done|].
   intros ph l. simpl. rewrite phConvStd_free2.
-  by rewrite IH.
-Qed.
-Lemma phConvProcMult_free2 :
-  forall xs ph l,
-  phConvProcMult ph xs l = PHCfree <-> ph l = PHCfree.
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros ph l. simpl. rewrite phConvProc_free2.
-  by rewrite IH.
-Qed.
-Lemma phConvActMult_free2 :
-  forall xs ph l,
-  phConvActMult ph xs l = PHCfree <-> ph l = PHCfree.
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros ph l. simpl. rewrite phConvAct_free2.
   by rewrite IH.
 Qed.
 
@@ -2780,22 +2043,6 @@ Proof.
   intros ph1 ph2 H1. simpl.
   apply phConvStd_disj; [|done]. by apply IH.
 Qed.
-Lemma phConvProcMult_disj :
-  forall xs ph1 ph2,
-  phDisj ph1 ph2 -> phDisj (phConvProcMult ph1 xs) (phConvProcMult ph2 xs).
-Proof.
-  induction xs as [|x xs IH]; [done|].
-  intros ph1 ph2 H1. simpl.
-  apply phConvProc_disj; [|done]. by apply IH.
-Qed.
-Lemma phConvActMult_disj :
-  forall xs ph1 ph2,
-  phDisj ph1 ph2 -> phDisj (phConvActMult ph1 xs) (phConvActMult ph2 xs).
-Proof.
-  induction xs as [|x xs IH]; [done|].
-  intros ph1 ph2 H1. simpl.
-  apply phConvAct_disj; [|done]. by apply IH.
-Qed.
 
 Add Parametric Morphism : phConvStdMult
   with signature phDisj ==> @Permutation Val ==> phDisj
@@ -2804,22 +2051,6 @@ Proof.
   intros ph1 ph2 H1 xs ys H2.
   rewrite H2. clear H2.
   by apply phConvStdMult_disj.
-Qed.
-Add Parametric Morphism : phConvProcMult
-  with signature phDisj ==> @Permutation Val ==> phDisj
-    as phConvProcMult_disj_mor.
-Proof.
-  intros ph1 ph2 H1 xs ys H2.
-  rewrite H2. clear H2.
-  by apply phConvProcMult_disj.
-Qed.
-Add Parametric Morphism : phConvActMult
-  with signature phDisj ==> @Permutation Val ==> phDisj
-    as phConvActMult_disj_mor.
-Proof.
-  intros ph1 ph2 H1 xs ys H2.
-  rewrite H2. clear H2.
-  by apply phConvActMult_disj.
 Qed.
 
 (** Batch conversions preserve entirety. *)
@@ -2833,28 +2064,6 @@ Proof.
   - simpl in H. rewrite <- IH.
     by rewrite <- phConvStd_entire with (l:=l).
   - simpl. rewrite phConvStd_entire with (l:=l).
-    by rewrite IH.
-Qed.
-Lemma phConvProcMult_entire:
-  forall xs ph l,
-  phcEntire (phConvProcMult ph xs l) <-> phcEntire (ph l).
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph l'. split; intro H.
-  - simpl in H. rewrite <- IH.
-    by rewrite <- phConvProc_entire with (l:=l).
-  - simpl. rewrite phConvProc_entire with (l:=l).
-    by rewrite IH.
-Qed.
-Lemma phConvActMult_entire:
-  forall xs ph l,
-  phcEntire (phConvActMult ph xs l) <-> phcEntire (ph l).
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph l'. split; intro H.
-  - simpl in H. rewrite <- IH.
-    by rewrite <- phConvAct_entire with (l:=l).
-  - simpl. rewrite phConvAct_entire with (l:=l).
     by rewrite IH.
 Qed.
 
@@ -2872,30 +2081,6 @@ Proof.
   - by rewrite <- IH.
   - by apply phConvStdMult_disj.
 Qed.
-Lemma phConvProcMult_union :
-  forall xs ph1 ph2,
-  phDisj ph1 ph2 ->
-  phConvProcMult (phUnion ph1 ph2) xs =
-  phUnion (phConvProcMult ph1 xs) (phConvProcMult ph2 xs).
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph1 ph2 H1. simpl.
-  rewrite <- phConvProc_union.
-  - by rewrite <- IH.
-  - by apply phConvProcMult_disj.
-Qed.
-Lemma phConvActMult_union :
-  forall xs ph1 ph2,
-  phDisj ph1 ph2 ->
-  phConvActMult (phUnion ph1 ph2) xs =
-  phUnion (phConvActMult ph1 xs) (phConvActMult ph2 xs).
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph1 ph2 H1. simpl.
-  rewrite <- phConvAct_union.
-  - by rewrite <- IH.
-  - by apply phConvActMult_disj.
-Qed.
 
 (** Batch conversions preserve heap concretisation. *)
 
@@ -2904,18 +2089,6 @@ Lemma phConvStdMult_concr :
 Proof.
   induction xs as [|l xs IH]; [done|].
   intros ph. simpl. by rewrite phConvStd_concr, IH.
-Qed.
-Lemma phConvProcMult_concr :
-  forall xs ph, phConcr (phConvProcMult ph xs) = phConcr ph.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph. simpl. by rewrite phConvProc_concr, IH.
-Qed.
-Lemma phConvActMult_concr :
-  forall xs ph, phConcr (phConvActMult ph xs) = phConcr ph.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph. simpl. by rewrite phConvAct_concr, IH.
 Qed.
 
 (** Any location that is not in the conversion batch
@@ -2927,24 +2100,6 @@ Proof.
   induction xs as [|l xs IH]; [done|].
   intros l' ph H1. simpl. rewrite IH.
   - apply phConvStd_pres. intro H2.
-    apply H1. clarify. simpl. by left.
-  - intro H2. apply H1. simpl. by right.
-Qed.
-Lemma phConvProcMult_pres :
-  forall xs l ph, ~ In l xs -> ph l = phConvProcMult ph xs l.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros l' ph H1. simpl. rewrite IH.
-  - apply phConvProc_pres. intro H2.
-    apply H1. clarify. simpl. by left.
-  - intro H2. apply H1. simpl. by right.
-Qed.
-Lemma phConvActMult_pres :
-  forall xs l ph, ~ In l xs -> ph l = phConvActMult ph xs l.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros l' ph H1. simpl. rewrite IH.
-  - apply phConvAct_pres. intro H2.
     apply H1. clarify. simpl. by left.
   - intro H2. apply H1. simpl. by right.
 Qed.
@@ -2966,67 +2121,6 @@ Proof.
     + rewrite IH; auto. by apply phcConvStd_idemp.
     + by apply IH.
 Qed.
-Lemma phConvProcMult_apply :
-  forall xs l ph,
-  In l xs -> phConvProcMult ph xs l = phcConvProc (ph l).
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros l ph H1. simpl in H1. destruct H1 as [H1|H1]; vauto.
-  - simpl. rewrite phConvProc_apply.
-    assert (H2 : In l xs \/ ~ In l xs) by apply classic.
-    destruct H2 as [H2|H2]; vauto.
-    + rewrite IH; auto. by apply phcConvProc_idemp.
-    + by rewrite <- phConvProcMult_pres.
-  - simpl. unfold phConvProc, phUpdate, update. desf.
-    + rewrite IH; auto. by apply phcConvProc_idemp.
-    + by apply IH.
-Qed.
-Lemma phConvActMult_apply :
-  forall xs l ph,
-  In l xs -> phConvActMult ph xs l = phcConvAct (ph l).
-Proof.
-  induction xs as [|l' xs IH]; [done|].
-  intros l ph H1. simpl in H1. destruct H1 as [H1|H1]; vauto.
-  - simpl. rewrite phConvAct_apply.
-    assert (H2 : In l xs \/ ~ In l xs) by apply classic.
-    destruct H2 as [H2|H2]; vauto.
-    + rewrite IH; auto. by apply phcConvAct_idemp.
-    + by rewrite <- phConvActMult_pres.
-  - simpl. unfold phConvAct, phUpdate, update. desf.
-    + rewrite IH; auto. by apply phcConvAct_idemp.
-    + by apply IH.
-Qed.
-
-(** Batch conversions preserve occupied snapshots. *)
-
-Lemma phConvProcMult_snapshot_occ :
-  forall xs ph l,
-  phSnapshot ph l <> None ->
-  phSnapshot (phConvProcMult ph xs) l <> None.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph l' H1. simpls.
-  by apply phConvProc_snapshot_occ, IH.
-Qed.
-Lemma phConvActMult_snapshot_occ :
-  forall xs ph l,
-  phSnapshot ph l <> None ->
-  phSnapshot (phConvActMult ph xs) l <> None.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph l' H1. simpls.
-  by apply phConvAct_snapshot_occ, IH.
-Qed.
-
-Lemma phConvActMult_snapshot_pres :
-  forall xs ph l v,
-  phSnapshot ph l = Some v ->
-  phSnapshot (phConvActMult ph xs) l = Some v.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph l' v H1. simpls.
-  by apply phConvAct_snapshot_pres, IH.
-Qed.
 
 (** Below are various other useful properties of batch conversions. *)
 
@@ -3040,30 +2134,6 @@ Proof.
   intros ph1 ph2 H1 H2. simpl.
   apply phConvStd_disj_entire.
   - rewrite phConvStdMult_entire. apply H1. vauto.
-  - apply IH; auto. intros l' H3. apply H1. vauto.
-Qed.
-Lemma phConvProcMult_disj_entire :
-  forall xs ph1 ph2,
-  (forall l, In l xs -> phcEntire (ph1 l)) ->
-  phDisj ph1 ph2 ->
-  phDisj (phConvProcMult ph1 xs) ph2.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph1 ph2 H1 H2. simpl.
-  apply phConvProc_disj_entire.
-  - rewrite phConvProcMult_entire. apply H1. vauto.
-  - apply IH; auto. intros l' H3. apply H1. vauto.
-Qed.
-Lemma phConvActMult_disj_entire :
-  forall xs ph1 ph2,
-  (forall l, In l xs -> phcEntire (ph1 l)) ->
-  phDisj ph1 ph2 ->
-  phDisj (phConvActMult ph1 xs) ph2.
-Proof.
-  induction xs as [|l xs IH]; [done|].
-  intros ph1 ph2 H1 H2. simpl.
-  apply phConvAct_disj_entire.
-  - rewrite phConvActMult_entire. apply H1. vauto.
   - apply IH; auto. intros l' H3. apply H1. vauto.
 Qed.
 

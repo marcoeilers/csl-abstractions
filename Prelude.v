@@ -18,7 +18,6 @@ Module Type Domains.
   (** Syntactic and semantic domains used in the formalisation: *)
 
   Parameter Act : Type.
-  Parameter ProcVar : Type.
   Parameter Var : Type.
   Parameter Val : Type.
 
@@ -29,16 +28,8 @@ Module Type Domains.
 
   (** Decidable equality: *)
 
-  Parameter procvar_eq_dec : forall x y: ProcVar, { x = y } + { x <> y }.
   Parameter val_eq_dec : forall x y: Val, { x = y } + { x <> y }.
   Parameter var_eq_dec : forall x y: Var, { x = y } + { x <> y }.
-
-  Lemma procvars_eq_dec :
-    forall xs ys: list ProcVar, { xs = ys } + { xs <> ys }.
-  Proof.
-    decide equality.
-    apply procvar_eq_dec.
-  Qed.
 
   Lemma vals_eq_dec :
     forall x y: list Val, { x = y } + { x <> y }.
