@@ -244,6 +244,219 @@ Proof. intros. phcsolve. Qed.
 Goal forall x y v, phDisj y x -> phcEntire (y v) -> phcEntire (phUnion x y v).
 Proof. intros. phcsolve. Qed.
 
+Ltac ghcsolve :=
+  clarify; match goal with
+    | [|- ghcValid GHCfree] => apply ghcValid_free
+    | [|- ghcDisj GHCfree GHCfree] => by apply ghcDisj_free_l, ghcValid_free
+    | [|- ghcDisj ?x GHCfree] => apply ghcDisj_free_l; ghcsolve
+    | [|- ghcDisj GHCfree ?x] => apply ghcDisj_free_r; ghcsolve
+    | [H: ghcDisj ?x ?y |- ghcDisj ?x ?y] => exact H
+    | [H: ghcDisj ?x ?y |- ghcDisj ?y ?x] => symmetry; exact H
+    | [H: ghDisj ?x ?y |- ghcDisj (?x ?v) (?y ?v)] => by apply H
+    | [H: ghDisj ?y ?x |- ghcDisj (?x ?v) (?y ?v)] => symmetry; by apply H
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj (ghcUnion ?x ?y) ?z |- ghcDisj ?y ?z] => apply ghcDisj_union_l with x; [exact H1|exact H2]
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj ?x (ghcUnion ?y ?z) |- ghcDisj ?x ?y] => apply ghcDisj_union_r with z; [exact H1|exact H2]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj (ghcUnion ?x ?y) ?z |- ghcDisj ?x (ghcUnion ?y ?z)] => apply ghcDisj_assoc_l; [exact H1|exact H2]
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj ?x (ghcUnion ?y ?z) |- ghcDisj (ghcUnion ?x ?y) ?z] => apply ghcDisj_assoc_r; [exact H1|exact H2]
+    | [H: ghcDisj ?x ?y |- ghcValid (ghcUnion ?x ?y)] => by apply ghcUnion_valid
+    | [H: ghcDisj ?y ?x |- ghcValid (ghcUnion ?x ?y)] => symmetry in H; by apply ghcUnion_valid
+    | [H: ghcDisj ?x ?y |- ghcValid ?x] => by apply ghcDisj_valid_l with y
+    | [H: ghcDisj ?x ?y |- ghcValid ?y] => by apply ghcDisj_valid_r with x
+    | [H: ghcDisj ?x ?y |- ghcValid ?x /\ ghcValid ?y] => by apply ghcDisj_valid
+    | [H: ghcDisj ?y ?x |- ghcValid ?x /\ ghcValid ?y] => apply ghcDisj_valid; by symmetry
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj (ghcUnion ?x ?y) ?z |- ghcDisj ?y ?z] => apply ghcDisj_union_l with x; [symmetry; exact H1|exact H2]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj (ghcUnion ?y ?x) ?z |- ghcDisj ?y ?z] => apply ghcDisj_union_l with x; [exact H1|by rewrite ghcUnion_comm]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj (ghcUnion ?x ?y) ?z |- ghcDisj ?z ?y] => symmetry; apply ghcDisj_union_l with x; [exact H1|exact H2]
+    | [H1: ghcDisj ?z ?y, H2: ghcDisj ?x (ghcUnion ?y ?z) |- ghcDisj ?x ?y] => apply ghcDisj_union_r with z; [symmetry; exact H1|exact H2]
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj ?x (ghcUnion ?z ?y) |- ghcDisj ?x ?y] => apply ghcDisj_union_r with z; [exact H1|by rewrite ghcUnion_comm]
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj ?x (ghcUnion ?y ?z) |- ghcDisj ?y ?x] => symmetry; by apply ghcDisj_union_r with z
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj (ghcUnion ?x ?y) ?z |- ghcDisj ?x (ghcUnion ?y ?z)] => apply ghcDisj_assoc_l; [symmetry; exact H1|exact H2]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj (ghcUnion ?y ?x) ?z |- ghcDisj ?x (ghcUnion ?y ?z)] => apply ghcDisj_assoc_l; [exact H1|by rewrite ghcUnion_comm]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj (ghcUnion ?x ?y) ?z |- ghcDisj ?x (ghcUnion ?z ?y)] => rewrite ghcUnion_comm; by apply ghcDisj_assoc_l
+    | [H1: ghcDisj ?z ?y, H2: ghcDisj ?x (ghcUnion ?y ?z) |- ghcDisj (ghcUnion ?x ?y) ?z] => apply ghcDisj_assoc_r; [symmetry; exact H1|exact H2]
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj ?x (ghcUnion ?z ?y) |- ghcDisj (ghcUnion ?x ?y) ?z] => apply ghcDisj_assoc_r; [exact H1|by rewrite ghcUnion_comm]
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj ?x (ghcUnion ?y ?z) |- ghcDisj (ghcUnion ?y ?x) ?z] => rewrite ghcUnion_comm; by apply ghcDisj_assoc_r
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj ?y ?z] => symmetry in H2; by apply ghcDisj_union_l with x
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj ?y ?z] => symmetry in H1; symmetry in H2; by apply ghcDisj_union_l with x
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?y ?x) |- ghcDisj ?y ?z] => symmetry in H2; apply ghcDisj_union_l with x; auto; rewrite ghcUnion_comm; auto; fail
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj ?z ?y] => symmetry; symmetry in H2; apply ghcDisj_union_l with x; auto; fail
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj (ghcUnion ?y ?z) ?x |- ghcDisj ?x ?y] => symmetry in H2; by apply ghcDisj_union_r with z
+    | [H1: ghcDisj ?z ?y, H2: ghcDisj (ghcUnion ?y ?z) ?x |- ghcDisj ?x ?y] => symmetry in H1; symmetry in H2; by apply ghcDisj_union_r with z
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj (ghcUnion ?z ?y) ?x |- ghcDisj ?x ?y] => symmetry in H2; apply ghcDisj_union_r with z; auto; by rewrite ghcUnion_comm
+    | [H1: ghcDisj ?y ?z, H2: ghcDisj (ghcUnion ?y ?z) ?x |- ghcDisj ?y ?x] => symmetry; symmetry in H2; by apply ghcDisj_union_r with z
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj (ghcUnion ?y ?x) ?z |- ghcDisj ?x (ghcUnion ?z ?y)] => rewrite ghcUnion_comm in H2; rewrite ghcUnion_comm; apply ghcDisj_assoc_l; [by symmetry|exact H2]
+    | [H1: ghcDisj ?z ?y, H2: ghcDisj ?x (ghcUnion ?z ?y) |- ghcDisj (ghcUnion ?y ?x) ?z] => rewrite ghcUnion_comm in H2; rewrite ghcUnion_comm; apply ghcDisj_assoc_r; [by symmetry|exact H2]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj ?x (ghcUnion ?y ?z)] => symmetry in H2; by apply ghcDisj_assoc_l
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj ?x (ghcUnion ?y ?z)] => symmetry in H1; symmetry in H2; by apply ghcDisj_assoc_l
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?y ?x) |- ghcDisj ?x (ghcUnion ?y ?z)] => apply ghcDisj_assoc_l; [exact H1|symmetry; by rewrite ghcUnion_comm]
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj ?x (ghcUnion ?z ?y)] => rewrite ghcUnion_comm; apply ghcDisj_assoc_l; [exact H1|by symmetry]
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj ?z (ghcUnion ?y ?x) |- ghcDisj ?x (ghcUnion ?y ?z)] => apply ghcDisj_assoc_l; [by symmetry|]; symmetry; rewrite ghcUnion_comm; auto; by symmetry
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj ?z (ghcUnion ?y ?x) |- ghcDisj ?x (ghcUnion ?z ?y)] => rewrite ghcUnion_comm in H2; rewrite ghcUnion_comm; apply ghcDisj_assoc_l; auto; by symmetry
+    | [H1: ghcDisj ?y ?x, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj (ghcUnion ?y ?z) ?x] => symmetry; apply ghcDisj_assoc_l; by symmetry
+    | [H1: ghcDisj ?x ?y, H2: ghcDisj ?z (ghcUnion ?x ?y) |- ghcDisj (ghcUnion ?z ?y) ?x] => apply ghcDisj_assoc_r; [by symmetry|by rewrite ghcUnion_comm]
+    | [|- ghcUnion ?x (ghcUnion ?y ?z) = ghcUnion (ghcUnion ?x ?y) ?z] => by apply ghcUnion_assoc
+    | [|- ghcUnion (ghcUnion ?x ?y) ?z = ghcUnion ?x (ghcUnion ?y ?z)] => symmetry; by apply ghcUnion_assoc
+    | [|- ghcUnion ?x ?y = ghcUnion ?y ?x] => by apply ghcUnion_comm
+    | [|- ghcUnion ?x GHCfree = ?x] => by apply ghcUnion_free_l
+    | [|- ghcUnion GHCfree ?x = ?x] => by apply ghcUnion_free_r
+    | [|- ?x = ghcUnion ?x GHCfree] => symmetry; by apply ghcUnion_free_l
+    | [|- ?x = ghcUnion GHCfree ?x] => symmetry; by apply ghcUnion_free_r
+    | [|- ghcUnion ?x (ghIden _) = ?x] => unfold ghIden; by apply ghcUnion_free_l
+    | [|- ghcUnion (ghIden _) ?x = ?x] => unfold ghIden; by apply ghcUnion_free_r
+    | [|- ghcUnion ?x (ghcUnion ?y ?z) = ghcUnion ?y (ghcUnion ?x ?z)] => by apply ghcUnion_swap_l
+    | [|- ghcUnion (ghcUnion ?x ?y) ?z = ghcUnion (ghcUnion ?x ?z) ?y] => by apply ghcUnion_swap_r
+    | [|- ghcUnion (ghcUnion ?x ?z) (ghcUnion ?y ?w) = ghcUnion (ghcUnion ?x ?y) (ghcUnion ?z ?w)] => by apply ghcUnion_compat
+    | [H: ghcEntire ?x |- ghcEntire (ghcUnion ?x ?y)] => apply ghcEntire_union; [clear H; ghcsolve|by left]
+    | [H: ghcEntire ?y |- ghcEntire (ghcUnion ?x ?y)] => apply ghcEntire_union; [clear H; ghcsolve|by right]
+    | [H: ghcEntire (?x ?v) |- ghcEntire (ghUnion ?x ?y ?v)] => apply ghcEntire_union; [clear H; ghcsolve|by left]
+    | [H: ghcEntire (?y ?v) |- ghcEntire (ghUnion ?x ?y ?v)] => apply ghcEntire_union; [clear H; ghcsolve|by right]
+    | _ => fail
+  end.
+
+Goal ghcValid GHCfree.
+Proof. ghcsolve. Qed.
+Goal ghcDisj GHCfree GHCfree.
+Proof. ghcsolve. Qed.
+Goal forall x, ghcValid x -> ghcDisj x GHCfree.
+Proof. intros. ghcsolve. Qed.
+Goal forall x, ghcValid x -> ghcDisj GHCfree x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcDisj y x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj (ghcUnion x y) z -> ghcDisj y z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj x (ghcUnion y z) -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj (ghcUnion x y) z -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj x (ghcUnion y z) -> ghcDisj (ghcUnion x y) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcValid (ghcUnion x y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj y x -> ghcValid (ghcUnion x y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcValid x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcValid y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcValid x /\ ghcValid y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj y x -> ghcValid x /\ ghcValid y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj (ghcUnion x y) z -> ghcDisj y z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj (ghcUnion y x) z -> ghcDisj y z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj (ghcUnion x y) z -> ghcDisj z y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj z y -> ghcDisj x (ghcUnion y z) -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj x (ghcUnion z y) -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj x (ghcUnion y z) -> ghcDisj y x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj (ghcUnion x y) z -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj (ghcUnion y x) z -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj (ghcUnion x y) z -> ghcDisj x (ghcUnion z y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj z y -> ghcDisj x (ghcUnion y z) -> ghcDisj (ghcUnion x y) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj x (ghcUnion z y) -> ghcDisj (ghcUnion x y) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj x (ghcUnion y z) -> ghcDisj (ghcUnion y x) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion x y) -> ghcDisj y z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion x y) -> ghcDisj y z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion y x) -> ghcDisj y z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion x y) -> ghcDisj z y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj (ghcUnion y z) x -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj z y -> ghcDisj (ghcUnion y z) x -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj (ghcUnion z y) x -> ghcDisj x y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y z -> ghcDisj (ghcUnion y z) x -> ghcDisj y x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj (ghcUnion y x) z -> ghcDisj x (ghcUnion z y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj z y -> ghcDisj x (ghcUnion z y) -> ghcDisj (ghcUnion y x) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion x y) -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj z y -> ghcDisj x (ghcUnion z y) -> ghcDisj (ghcUnion y x) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion x y) -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion y x) -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion x y) -> ghcDisj x (ghcUnion z y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion y x) -> ghcDisj x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion y x) -> ghcDisj x (ghcUnion z y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion x y) -> ghcDisj (ghcUnion y z) x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion x y) -> ghcDisj (ghcUnion y z) x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj x y -> ghcDisj z (ghcUnion x y) -> ghcDisj (ghcUnion z y) x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion y x) -> ghcDisj (ghcUnion y z) x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcDisj y x -> ghcDisj z (ghcUnion y x) -> ghcDisj (ghcUnion z y) x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcUnion x (ghcUnion y z) = ghcUnion (ghcUnion x y) z.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcUnion (ghcUnion x y) z = ghcUnion x (ghcUnion y z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcUnion x y = ghcUnion y x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x, ghcUnion x GHCfree = x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x, ghcUnion GHCfree x = x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x, x = ghcUnion x GHCfree.
+Proof. intros. ghcsolve. Qed.
+Goal forall x, x = ghcUnion GHCfree x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x v, ghcUnion x (ghIden v) = x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x v, ghcUnion (ghIden v) x = x.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcUnion x (ghcUnion y z) = ghcUnion y (ghcUnion x z).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z, ghcUnion (ghcUnion x y) z = ghcUnion (ghcUnion x z) y.
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z w, ghcUnion (ghcUnion x z) (ghcUnion y w) = ghcUnion (ghcUnion x y) (ghcUnion z w).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y z w, ghcUnion (ghcUnion x y) (ghcUnion z w) = ghcUnion (ghcUnion x z) (ghcUnion y w).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcEntire x -> ghcEntire (ghcUnion x y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj y x -> ghcEntire x -> ghcEntire (ghcUnion x y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj x y -> ghcEntire y -> ghcEntire (ghcUnion x y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y, ghcDisj y x -> ghcEntire y -> ghcEntire (ghcUnion x y).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y v, ghDisj x y -> ghcEntire (x v) -> ghcEntire (ghUnion x y v).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y v, ghDisj y x -> ghcEntire (x v) -> ghcEntire (ghUnion x y v).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y v, ghDisj x y -> ghcEntire (y v) -> ghcEntire (ghUnion x y v).
+Proof. intros. ghcsolve. Qed.
+Goal forall x y v, ghDisj y x -> ghcEntire (y v) -> ghcEntire (ghUnion x y v).
+Proof. intros. ghcsolve. Qed.
+
+
 
 (** ** Permission heap *)
 
@@ -454,5 +667,207 @@ Goal forall x y v, phcUnion (x v) (y v) = phUnion x y v.
 Proof. intros. phsolve. Qed.
 Goal forall x y v, phcDisj (x v) (y v) -> phcEntire (x v) -> phcEntire (phUnion x y v).
 Proof. intros. phsolve. Qed.
+
+
+Ltac ghsolve :=
+  clarify; match goal with
+    | [|- ghValid ghIden] => apply ghValid_iden
+    | [|- ghDisj ghIden ghIden] => by apply ghDisj_iden_l, ghValid_iden
+    | [|- ghDisj ?x ghIden] => apply ghDisj_iden_l; ghsolve
+    | [|- ghDisj ghIden ?x] => apply ghDisj_iden_r; ghsolve
+    | [H: ghDisj ?x ?y |- ghDisj ?x ?y] => exact H
+    | [H: ghDisj ?x ?y |- ghDisj ?y ?x] => symmetry; exact H
+    | [H1: ghDisj ?x ?y, H2: ghDisj (ghUnion ?x ?y) ?z |- ghDisj ?y ?z] => apply ghDisj_union_l with x; [exact H1|exact H2]
+    | [H1: ghDisj ?y ?z, H2: ghDisj ?x (ghUnion ?y ?z) |- ghDisj ?x ?y] => apply ghDisj_union_r with z; [exact H1|exact H2]
+    | [H1: ghDisj ?x ?y, H2: ghDisj (ghUnion ?x ?y) ?z |- ghDisj ?x (ghUnion ?y ?z)] => apply ghDisj_assoc_l; [exact H1|exact H2]
+    | [H1: ghDisj ?y ?z, H2: ghDisj ?x (ghUnion ?y ?z) |- ghDisj (ghUnion ?x ?y) ?z] => apply ghDisj_assoc_r; [exact H1|exact H2]
+    | [H: ghDisj ?x ?y |- ghValid (ghUnion ?x ?y)] => by apply ghUnion_valid
+    | [H: ghDisj ?y ?x |- ghValid (ghUnion ?x ?y)] => symmetry in H; by apply ghUnion_valid
+    | [H: ghDisj ?x ?y |- ghValid ?x] => by apply ghDisj_valid_l with y
+    | [H: ghDisj ?x ?y |- ghValid ?y] => by apply ghDisj_valid_r with x
+    | [H: ghDisj ?x ?y |- ghValid ?x /\ ghValid ?y] => by apply ghDisj_valid
+    | [H: ghDisj ?y ?x |- ghValid ?x /\ ghValid ?y] => apply ghDisj_valid; by symmetry
+    | [H1: ghDisj ?y ?x, H2: ghDisj (ghUnion ?x ?y) ?z |- ghDisj ?y ?z] => apply ghDisj_union_l with x; [symmetry; exact H1|exact H2]
+    | [H1: ghDisj ?x ?y, H2: ghDisj (ghUnion ?y ?x) ?z |- ghDisj ?y ?z] => apply ghDisj_union_l with x; [exact H1|by rewrite ghUnion_comm]
+    | [H1: ghDisj ?x ?y, H2: ghDisj (ghUnion ?x ?y) ?z |- ghDisj ?z ?y] => symmetry; apply ghDisj_union_l with x; [exact H1|exact H2]
+    | [H1: ghDisj ?z ?y, H2: ghDisj ?x (ghUnion ?y ?z) |- ghDisj ?x ?y] => apply ghDisj_union_r with z; [symmetry; exact H1|exact H2]
+    | [H1: ghDisj ?y ?z, H2: ghDisj ?x (ghUnion ?z ?y) |- ghDisj ?x ?y] => apply ghDisj_union_r with z; [exact H1|by rewrite ghUnion_comm]
+    | [H1: ghDisj ?y ?z, H2: ghDisj ?x (ghUnion ?y ?z) |- ghDisj ?y ?x] => symmetry; by apply ghDisj_union_r with z
+    | [H1: ghDisj ?y ?x, H2: ghDisj (ghUnion ?x ?y) ?z |- ghDisj ?x (ghUnion ?y ?z)] => apply ghDisj_assoc_l; [symmetry; exact H1|exact H2]
+    | [H1: ghDisj ?x ?y, H2: ghDisj (ghUnion ?y ?x) ?z |- ghDisj ?x (ghUnion ?y ?z)] => apply ghDisj_assoc_l; [exact H1|by rewrite ghUnion_comm]
+    | [H1: ghDisj ?x ?y, H2: ghDisj (ghUnion ?x ?y) ?z |- ghDisj ?x (ghUnion ?z ?y)] => rewrite ghUnion_comm; by apply ghDisj_assoc_l
+    | [H1: ghDisj ?z ?y, H2: ghDisj ?x (ghUnion ?y ?z) |- ghDisj (ghUnion ?x ?y) ?z] => apply ghDisj_assoc_r; [symmetry; exact H1|exact H2]
+    | [H1: ghDisj ?y ?z, H2: ghDisj ?x (ghUnion ?z ?y) |- ghDisj (ghUnion ?x ?y) ?z] => apply ghDisj_assoc_r; [exact H1|by rewrite ghUnion_comm]
+    | [H1: ghDisj ?y ?z, H2: ghDisj ?x (ghUnion ?y ?z) |- ghDisj (ghUnion ?y ?x) ?z] => rewrite ghUnion_comm; by apply ghDisj_assoc_r
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj ?y ?z] => symmetry in H2; by apply ghDisj_union_l with x
+    | [H1: ghDisj ?y ?x, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj ?y ?z] => symmetry in H1; symmetry in H2; by apply ghDisj_union_l with x
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?y ?x) |- ghDisj ?y ?z] => symmetry in H2; apply ghDisj_union_l with x; auto; rewrite ghUnion_comm; auto; fail
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj ?z ?y] => symmetry; symmetry in H2; apply ghDisj_union_l with x; auto; fail
+    | [H1: ghDisj ?y ?z, H2: ghDisj (ghUnion ?y ?z) ?x |- ghDisj ?x ?y] => symmetry in H2; by apply ghDisj_union_r with z
+    | [H1: ghDisj ?z ?y, H2: ghDisj (ghUnion ?y ?z) ?x |- ghDisj ?x ?y] => symmetry in H1; symmetry in H2; by apply ghDisj_union_r with z
+    | [H1: ghDisj ?y ?z, H2: ghDisj (ghUnion ?z ?y) ?x |- ghDisj ?x ?y] => symmetry in H2; apply ghDisj_union_r with z; auto; by rewrite ghUnion_comm
+    | [H1: ghDisj ?y ?z, H2: ghDisj (ghUnion ?y ?z) ?x |- ghDisj ?y ?x] => symmetry; symmetry in H2; by apply ghDisj_union_r with z
+    | [H1: ghDisj ?y ?x, H2: ghDisj (ghUnion ?y ?x) ?z |- ghDisj ?x (ghUnion ?z ?y)] => rewrite ghUnion_comm in H2; rewrite ghUnion_comm; apply ghDisj_assoc_l; [by symmetry|exact H2]
+    | [H1: ghDisj ?z ?y, H2: ghDisj ?x (ghUnion ?z ?y) |- ghDisj (ghUnion ?y ?x) ?z] => rewrite ghUnion_comm in H2; rewrite ghUnion_comm; apply ghDisj_assoc_r; [by symmetry|exact H2]
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj ?x (ghUnion ?y ?z)] => symmetry in H2; by apply ghDisj_assoc_l
+    | [H1: ghDisj ?y ?x, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj ?x (ghUnion ?y ?z)] => symmetry in H1; symmetry in H2; by apply ghDisj_assoc_l
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?y ?x) |- ghDisj ?x (ghUnion ?y ?z)] => apply ghDisj_assoc_l; [exact H1|symmetry; by rewrite ghUnion_comm]
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj ?x (ghUnion ?z ?y)] => rewrite ghUnion_comm; apply ghDisj_assoc_l; [exact H1|by symmetry]
+    | [H1: ghDisj ?y ?x, H2: ghDisj ?z (ghUnion ?y ?x) |- ghDisj ?x (ghUnion ?y ?z)] => apply ghDisj_assoc_l; [by symmetry|]; symmetry; rewrite ghUnion_comm; auto; by symmetry
+    | [H1: ghDisj ?y ?x, H2: ghDisj ?z (ghUnion ?y ?x) |- ghDisj ?x (ghUnion ?z ?y)] => rewrite ghUnion_comm in H2; rewrite ghUnion_comm; apply ghDisj_assoc_l; auto; by symmetry
+    | [H1: ghDisj ?y ?x, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj (ghUnion ?y ?z) ?x] => symmetry; apply ghDisj_assoc_l; by symmetry
+    | [H1: ghDisj ?x ?y, H2: ghDisj ?z (ghUnion ?x ?y) |- ghDisj (ghUnion ?z ?y) ?x] => apply ghDisj_assoc_r; [by symmetry|by rewrite ghUnion_comm]
+    | [H: ghDisj ?x ?y |- ghcDisj (?x ?v) (?y ?v)] => by apply H
+    | [H: ghDisj ?y ?x |- ghcDisj (?x ?v) (?y ?v)] => symmetry; by apply H
+    | [|- ghDisj (ghUpdate _ ?l _) (ghUpdate _ ?l _)] => apply ghDisj_upd; [ghcsolve|ghsolve]
+    | [|- ghUnion (ghUnion ?x ?y) ?z = ghUnion ?x (ghUnion ?y ?z)] => by apply ghUnion_assoc
+    | [|- ghUnion ?x (ghUnion ?y ?z) = ghUnion (ghUnion ?x ?y) ?z] => symmetry; by apply ghUnion_assoc
+    | [|- ghUnion ?x ?y = ghUnion ?y ?x] => by apply ghUnion_comm
+    | [|- ghUnion ?x ghIden = ?x] => by apply ghUnion_iden_l
+    | [|- ghUnion ghIden ?x = ?x] => by apply ghUnion_iden_r
+    | [|- ghUnion ?x (ghUnion ?y ?z) = ghUnion ?y (ghUnion ?x ?z)] => by apply ghUnion_swap_l
+    | [|- ghUnion (ghUnion ?x ?y) ?z = ghUnion (ghUnion ?x ?z) ?y] => by apply ghUnion_swap_r
+    | [|- ghUnion (ghUnion ?x ?z) (ghUnion ?y ?w) = ghUnion (ghUnion ?x ?y) (ghUnion ?z ?w)] => by apply ghUnion_compat
+    | [|- ghUnion ?x ?y ?v = ghcUnion (?x ?v) (?y ?v)] => by apply ghUnion_cell
+    | [|- ghcUnion (?x ?v) (?y ?v) = ghUnion ?x ?y ?v] => by apply ghUnion_cell
+    | [|- ghcEntire (ghUnion ?x ?y ?v)] => rewrite <- ghUnion_cell; ghcsolve
+    | _ => fail
+  end.
+
+
+(** *** Unit tests *)
+
+(** Below several unit tests are given for [pmesolve]. *)
+
+Goal ghValid ghIden.
+Proof. ghsolve. Qed.
+Goal ghDisj ghIden ghIden.
+Proof. ghsolve. Qed.
+Goal forall x, ghValid x -> ghDisj x ghIden.
+Proof. intros. ghsolve. Qed.
+Goal forall x, ghValid x -> ghDisj ghIden x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj x y -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj x y -> ghDisj y x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj (ghUnion x y) z -> ghDisj y z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj x (ghUnion y z) -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj (ghUnion x y) z -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj x (ghUnion y z) -> ghDisj (ghUnion x y) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj x y -> ghValid (ghUnion x y).
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj y x -> ghValid (ghUnion x y).
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj x y -> ghValid x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj x y -> ghValid y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj x y -> ghValid x /\ ghValid y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghDisj y x -> ghValid x /\ ghValid y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj (ghUnion x y) z -> ghDisj y z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj (ghUnion y x) z -> ghDisj y z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj (ghUnion x y) z -> ghDisj z y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj z y -> ghDisj x (ghUnion y z) -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj x (ghUnion z y) -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj x (ghUnion y z) -> ghDisj y x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj (ghUnion x y) z -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj (ghUnion y x) z -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj (ghUnion x y) z -> ghDisj x (ghUnion z y).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj z y -> ghDisj x (ghUnion y z) -> ghDisj (ghUnion x y) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj x (ghUnion z y) -> ghDisj (ghUnion x y) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj x (ghUnion y z) -> ghDisj (ghUnion y x) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion x y) -> ghDisj y z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion x y) -> ghDisj y z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion y x) -> ghDisj y z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion x y) -> ghDisj z y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj (ghUnion y z) x -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj z y -> ghDisj (ghUnion y z) x -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj (ghUnion z y) x -> ghDisj x y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y z -> ghDisj (ghUnion y z) x -> ghDisj y x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj (ghUnion y x) z -> ghDisj x (ghUnion z y).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj z y -> ghDisj x (ghUnion z y) -> ghDisj (ghUnion y x) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion x y) -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj z y -> ghDisj x (ghUnion z y) -> ghDisj (ghUnion y x) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion x y) -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion y x) -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion x y) -> ghDisj x (ghUnion z y).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion y x) -> ghDisj x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion y x) -> ghDisj x (ghUnion z y).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion x y) -> ghDisj (ghUnion y z) x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion x y) -> ghDisj (ghUnion y z) x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj x y -> ghDisj z (ghUnion x y) -> ghDisj (ghUnion z y) x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion y x) -> ghDisj (ghUnion y z) x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghDisj y x -> ghDisj z (ghUnion y x) -> ghDisj (ghUnion z y) x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y v, ghDisj x y -> ghcDisj (x v) (y v).
+Proof. intros. ghsolve. Qed.
+Goal forall x y v, ghDisj y x -> ghcDisj (x v) (y v).
+Proof. intros. ghsolve. Qed.
+Goal forall x y l v w, ghDisj x y -> ghcDisj v w -> ghDisj (ghUpdate x l v) (ghUpdate y l w).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghUnion x (ghUnion y z) = ghUnion (ghUnion x y) z.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghUnion (ghUnion x y) z = ghUnion x (ghUnion y z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y, ghUnion x y = ghUnion y x.
+Proof. intros. ghsolve. Qed.
+Goal forall x, ghUnion x ghIden = x.
+Proof. intros. ghsolve. Qed.
+Goal forall x, ghUnion ghIden x = x.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghUnion x (ghUnion y z) = ghUnion y (ghUnion x z).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z, ghUnion (ghUnion x y) z = ghUnion (ghUnion x z) y.
+Proof. intros. ghsolve. Qed.
+Goal forall x y z w, ghUnion (ghUnion x z) (ghUnion y w) = ghUnion (ghUnion x y) (ghUnion z w).
+Proof. intros. ghsolve. Qed.
+Goal forall x y z w, ghUnion (ghUnion x y) (ghUnion z w) = ghUnion (ghUnion x z) (ghUnion y w).
+Proof. intros. ghsolve. Qed.
+Goal forall x y v, ghUnion x y v = ghcUnion (x v) (y v).
+Proof. intros. ghsolve. Qed.
+Goal forall x y v, ghcUnion (x v) (y v) = ghUnion x y v.
+Proof. intros. ghsolve. Qed.
+Goal forall x y v, ghcDisj (x v) (y v) -> ghcEntire (x v) -> ghcEntire (ghUnion x y v).
+Proof. intros. ghsolve. Qed.
 
 End HeapSolver.
