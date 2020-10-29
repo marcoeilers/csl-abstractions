@@ -474,26 +474,24 @@ Proof.
     simpl. clarify. exists ph3, (phUnion ph4 ph2).
     intuition; [phsolve|phsolve|].
     exists pm3, (ghUnion pm4 pm2).
-    rewrite <- D4 in *. clear D4.
     intuition; [ghsolve|ghsolve|].
     apply IH2; [phsolve|ghsolve|done].
   (* magic wand *)
   - simpls. intros ph' pm' H4 H5 H6.
-    rewrite phUnion_assoc, pmUnion_assoc.
-    apply H3; clear H3; [phsolve|pmsolve|].
-    rewrite phUnion_comm, pmUnion_comm.
-    apply IH1; [phsolve|pmsolve|done].
+    rewrite phUnion_assoc, ghUnion_assoc.
+    apply H3; clear H3; [phsolve|ghsolve|].
+    rewrite phUnion_comm, ghUnion_comm.
+    apply IH1; [phsolve|ghsolve|done].
   (* heap ownership *)
   - unfold sat in *.
     destruct H3 as (H3&H4). split; [done|].
     rewrite <- phUnion_cell.
     apply phcLe_weaken; vauto.
-  (* process ownership *)
+  (* guard ownership *)
   - unfold sat in *.
-    destruct H3 as (pmv&H3&H4).
-    exists (pmeUnion pmv (pm2 (g x))). split.
-    + apply pmeDisj_assoc_l; auto. pmeclarify.
-    + rewrite <- pmeUnion_assoc. by pmeclarify.
+    destruct H3 as (H3&H4). split; [done|].
+    rewrite <- ghUnion_cell.
+    apply ghcLe_weaken; vauto.
 Qed.
 
 (** The satisfiability of iterated separating conjunctions
@@ -517,23 +515,12 @@ Proof.
     destruct SAT as (ph3&ph4&D3&H3&pm3&pm4&D4&H4&SAT3&SAT4).
     clarify. exists ph3, (phUnion ph1 ph4).
     intuition; [phsolve|phsolve|].
-    exists pm3, (pmUnion pm1 pm4).
-    intuition; [pmclarify; pmsolve|pmclarify; pmsolve|].
+    exists pm3, (ghUnion pm1 pm4).
+    intuition; [ghsolve|ghsolve|].
     exists ph1, ph4. intuition; [phsolve|].
-    exists pm1, pm4. intuition. pmclarify. pmsolve.
+    exists pm1, pm4. intuition. ghsolve. 
   (* transitive *)
   - by apply IH2, IH1.
-Qed.
-
-(** The satisfiability of points-to predicates is independent of the process map. *)
-
-Lemma sat_pointsto_indep :
-  forall ph pm1 pm2 s g t q E1 E2,
-  sat ph pm1 s g (Apointsto t q E1 E2) ->
-  sat ph pm2 s g (Apointsto t q E1 E2).
-Proof.
-  intros ph pm1 pm2 s g t q E1 E2 SAT.
-  unfold sat in *. desf.
 Qed.
 
 
@@ -548,7 +535,7 @@ Qed.
 
 Definition aEntails (A1 A2 : Assn) : Prop :=
   forall ph pm s g,
-    phValid ph -> pmValid pm -> sat ph pm s g A1 -> sat ph pm s g A2.
+    phValid ph -> ghValid pm -> sat ph pm s g A1 -> sat ph pm s g A2.
 Definition aEntails_rev (A1 A2 : Assn) : Prop :=
   aEntails A2 A1.
 Definition aEquiv (A1 A2 : Assn) : Prop :=
@@ -622,8 +609,8 @@ Proof.
   destruct SAT as (ph1&ph2&D1&H1&pm1&pm2&D2&H2&SAT1&SAT2).
   exists ph1, ph2. intuition.
   exists pm1, pm2. intuition.
-  - apply ENT1; [phsolve|pmsolve|done].
-  - apply ENT2; [phsolve|pmsolve|done].
+  - apply ENT1; [phsolve|ghsolve|done].
+  - apply ENT2; [phsolve|ghsolve|done].
 Qed.
 Add Parametric Morphism : Awand
   with signature aEntails_rev ==> aEntails ==> aEntails
@@ -634,7 +621,7 @@ Proof.
   intros ph' pm' D1 D2 SAT1.
   apply ENT2; auto.
   apply WAND; auto.
-  apply ENT1; [phsolve|pmsolve|done].
+  apply ENT1; [phsolve|ghsolve|done].
 Qed.
 
 Add Parametric Morphism : Adisj
@@ -668,10 +655,10 @@ Qed.
 Lemma sat_star_combine :
   forall ph1 ph2 pm1 pm2 s g A1 A2,
   phDisj ph1 ph2 ->
-  pmDisj pm1 pm2 ->
+  ghDisj pm1 pm2 ->
   sat ph1 pm1 s g A1 ->
   sat ph2 pm2 s g A2 ->
-  sat (phUnion ph1 ph2) (pmUnion pm1 pm2) s g (Astar A1 A2).
+  sat (phUnion ph1 ph2) (ghUnion pm1 pm2) s g (Astar A1 A2).
 Proof.
   intros ph1 ph2 pm1 pm2 s g A1 A2 D1 D2 H1 H2.
   exists ph1, ph2. repeat split; auto.
@@ -712,11 +699,11 @@ Proof.
   destruct SAT2 as (ph2&ph3&D3&H3&pm2&pm3&D4&H4&SAT2&SAT3).
   exists (phUnion ph1 ph2), ph3.
   repeat split; [phsolve|phsolve|].
-  exists (pmUnion pm1 pm2), pm3.
-  repeat split; [pmclarify; pmsolve|pmclarify; pmsolve| |done].
+  exists (ghUnion pm1 pm2), pm3.
+  repeat split; [ghsolve|ghsolve| |done].
   exists ph1, ph2. repeat split; [phsolve|].
   exists pm1, pm2. repeat split; auto.
-  pmclarify. pmsolve.
+  ghsolve.
 Qed.
 Theorem Astar_assoc_l :
   forall A1 A2 A3,
@@ -734,11 +721,11 @@ Proof.
   destruct SAT as (ph1'&ph3&D1&H1&pm1'&pm3&D2&H2&SAT1&SAT2).
   destruct SAT1 as (ph1&ph2&D3&H3&pm1&pm2&D4&H4&SAT1&SAT3).
   exists ph1, (phUnion ph2 ph3). repeat split; [phsolve|phsolve|].
-  exists pm1, (pmUnion pm2 pm3).
-  repeat split; [pmclarify; pmsolve|pmclarify; pmsolve|done|].
+  exists pm1, (ghUnion pm2 pm3).
+  repeat split; [ghsolve|ghsolve|done|].
   exists ph2, ph3. repeat split; [phsolve|].
   exists pm2, pm3. repeat split; auto.
-  pmclarify. pmsolve.
+  ghsolve.
 Qed.
 Theorem Astar_assoc_r :
   forall A1 A2 A3,
@@ -763,7 +750,7 @@ Proof.
   destruct SAT as (ph1&ph2&D1&H1&pm1&pm2&D2&H2&SAT1&SAT2).
   exists ph2, ph1. repeat split; [phsolve|phsolve|].
   exists pm2, pm1.
-  repeat split; auto; [pmclarify; pmsolve|pmclarify; pmsolve].
+  repeat split; auto; [ghsolve|ghsolve].
 Qed.
 Theorem Astar_comm :
   forall A1 A2, aEntails (Astar A1 A2) (Astar A2 A1).
@@ -793,12 +780,12 @@ Qed.
 
 Lemma sat_star_true :
   forall ph pm s g A,
-  phValid ph -> pmValid pm ->
+  phValid ph -> ghValid pm ->
   sat ph pm s g A -> sat ph pm s g (Astar A Atrue).
 Proof.
   intros ph pm s g A V1 V2 SAT.
   exists ph, phIden. repeat split; auto; [phsolve|].
-  exists pm, pmIden. repeat split; auto. pmsolve.
+  exists pm, ghIden. repeat split; auto. ghsolve.
 Qed.
 Theorem Astar_true :
   forall A, aEntails A (Astar A Atrue).
@@ -964,7 +951,7 @@ Proof.
 Qed.
 Lemma sat_iter_add_r :
   forall (xs ys : list Assn) ph pm s g,
-  phValid ph -> pmValid pm ->
+  phValid ph -> ghValid pm ->
   sat ph pm s g (Aiter (xs ++ ys)) ->
   sat ph pm s g (Astar (Aiter xs) (Aiter ys)).
 Proof.
@@ -977,7 +964,7 @@ Proof.
     destruct SAT as (ph1&ph2&D1&H1&pm1&pm2&D2&H2&SAT1&SAT2).
     exists ph1, ph2. repeat split; vauto.
     exists pm1, pm2. repeat split; vauto.
-    apply IH; [phsolve|pmsolve|done].
+    apply IH; [phsolve|ghsolve|done].
 Qed.
 Theorem Aiter_add_r :
   forall xs ys,
@@ -1100,24 +1087,13 @@ Proof.
 Qed.
 
 Lemma sat_ApointstoIter_permut {T} :
-  forall (xs ys : list T) ph pm s g (fq : T -> Qc)(f1 f2 : T -> Expr) t,
-  Permutation xs ys ->
-  sat ph pm s g (Aiter (ApointstoIter xs fq f1 f2 t)) ->
-  sat ph pm s g (Aiter (ApointstoIter ys fq f1 f2 t)).
-Proof.
-  intros xs ys ph pm s g fq f1 f2 t H1 SAT.
-  apply sat_iter_permut with (ApointstoIter xs fq f1 f2 t); auto.
-  apply map_permut_mor; auto.
-Qed.
-
-Lemma sat_procact_iter_permut {T} :
   forall (xs ys : list T) ph pm s g (fq : T -> Qc)(f1 f2 : T -> Expr),
   Permutation xs ys ->
-  sat ph pm s g (Aiter (ApointstoIter_procact xs fq f1 f2)) ->
-  sat ph pm s g (Aiter (ApointstoIter_procact ys fq f1 f2)).
+  sat ph pm s g (Aiter (ApointstoIter xs fq f1 f2)) ->
+  sat ph pm s g (Aiter (ApointstoIter ys fq f1 f2)).
 Proof.
   intros xs ys ph pm s g fq f1 f2 H1 SAT.
-  apply sat_iter_permut with (ApointstoIter_procact xs fq f1 f2); auto.
+  apply sat_iter_permut with (ApointstoIter xs fq f1 f2); auto.
   apply map_permut_mor; auto.
 Qed.
 
@@ -1160,8 +1136,8 @@ Proof.
   - intro s. red in H1.
     destruct H1 as (H1&H2).
     red in H1. red in H2.
-    specialize H1 with phIden pmIden s s.
-    specialize H2 with phIden pmIden s s. simpls.
+    specialize H1 with phIden ghIden s s.
+    specialize H2 with phIden ghIden s s. simpls.
     assert (H3 : cond_eval B1 s = true \/ cond_eval B1 s = false)
       by apply cond_eval_excl.
     destruct H3 as [H3|H3]; vauto.
@@ -1266,9 +1242,9 @@ Proof.
   intros A1 A2 A A' H1 H2 ph pm s g H3 H4 H5.
   simpl in H5.
   destruct H5 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. pmclarify.
-  apply H1; auto; [phsolve|pmsolve|].
-  apply H2; auto; [phsolve|pmsolve].
+  clarify. 
+  apply H1; auto; [phsolve|ghsolve|].
+  apply H2; auto; [phsolve|ghsolve].
 Qed.
 
 
@@ -1281,45 +1257,54 @@ Qed.
 
 
 Theorem Apointsto_valid :
-  forall t q E1 E2,
-  ~ perm_valid q -> aEntails (Apointsto t q E1 E2) Afalse.
+  forall q E1 E2,
+  ~ perm_valid q -> aEntails (Apointsto q E1 E2) Afalse.
 Proof.
-  intros t q E1 E2 H1 ph pm s g H2 H3 H4.
+  intros q E1 E2 H1 ph pm s g H2 H3 H4.
+  simpl. simpl in H4. repeat desf.
+Qed.
+
+Theorem Aguard_valid :
+  forall q t a,
+  ~ perm_valid q -> aEntails (Aguard t a q) Afalse.
+Proof.
+  intros q t a H1 ph pm s g H2 H3 H4.
   simpl. simpl in H4. repeat desf.
 Qed.
 
 Lemma Apointsto_entire :
-  forall ph pm s g t E1 E2,
+  forall ph pm s g E1 E2,
   phValid ph ->
-  sat ph pm s g (Apointsto t 1 E1 E2) ->
+  sat ph pm s g (Apointsto 1 E1 E2) ->
   phcEntire (ph (expr_eval E1 s)).
 Proof.
-  intros ph pm s g t E1 E2 H1 SAT.
-  destruct t.
-  (* standard points-to predicate *)
-  - unfold sat in SAT. destruct SAT as (_&SAT).
-    apply phcLe_entire_eq in SAT; vauto.
-    rewrite <- SAT. vauto.
-  (* process points-to predicate *)
-  - unfold sat in SAT. destruct SAT as (_&SAT).
-    apply phcLe_entire_eq in SAT; vauto.
-    rewrite <- SAT. vauto.
-  (* standard points-to predicate *)
-  - unfold sat in SAT. destruct SAT as (_&SAT).
-    destruct SAT as (v'&SAT).
-    apply phcLe_entire_eq in SAT; vauto.
-    rewrite <- SAT. vauto.
+  intros ph pm s g E1 E2 H1 SAT.
+  unfold sat in SAT. destruct SAT as (_&SAT).
+  apply phcLe_entire_eq in SAT; vauto.
+  rewrite <- SAT. vauto.
+Qed.
+
+Lemma Aguard_entire :
+  forall ph gh s g t a,
+  ghValid gh ->
+  sat ph gh s g (Aguard t a 1) ->
+  ghcEntire (gh (GGuard t a)).
+Proof.
+  intros ph gh s g t a H1 SAT.
+  unfold sat in SAT. destruct SAT as (_&SAT).
+  apply ghcLe_entire_eq in SAT; vauto.
+  rewrite <- SAT. vauto.
 Qed.
 
 Lemma ApointstoIter_perm_full {T} :
-  forall (xs : list T)(fq : T -> Qc)(f1 f2 : T -> Expr)(l : Val) ph pm s g t,
+  forall (xs : list T)(fq : T -> Qc)(f1 f2 : T -> Expr)(l : Val) ph pm s g ,
     (forall x : T, In x xs -> fq x = 1) ->
-  sat ph pm s g (Aiter (ApointstoIter xs fq f1 f2 t)) ->
+  sat ph pm s g (Aiter (ApointstoIter xs fq f1 f2)) ->
   In l (map (expr_eval_map f1 s) xs) ->
   phcEntire (ph l).
 Proof.
   induction xs as [|x xs IH]. vauto.
-  intros fq f1 f2 l ph pm s g t H1 SAT H2.
+  intros fq f1 f2 l ph pm s g H1 SAT H2.
   destruct SAT as (ph1&ph2&D1&H3&pm1&pm2&D2&H4&SAT1&SAT2).
   rewrite map_cons in H2. simpl in H2. destruct H2 as [H2|H2].
   - rewrite H1 in SAT1; vauto.
@@ -1328,29 +1313,14 @@ Proof.
     intros y H5. apply H1. vauto.
 Qed.
 
-(** Heap ownership predicates of different types cannot coexist
-    if they target the same heap location. *)
-
-Lemma Apointsto_diff :
-  forall q1 q2 E1 E2 t1 t2,
-  t1 <> t2 ->
-  aEntails (Astar (Apointsto t1 q1 E1 E2) (Apointsto t2 q2 E1 E2)) Afalse.
-Proof.
-  intros q1 q2 E1 E2 t1 t2 H1 ph pm s g V1 V2 SAT.
-  destruct SAT as (ph1&ph2&D1&EQ1&pm1&pm2&D2&EQ2&SAT1&SAT2).
-  clarify. red in D1. red in D1.
-  specialize D1 with (expr_eval E1 s).
-  simpls. desf; intuition desf.
-Qed.
-
 (** Heap ownership predicates may be _split_. *)
 
-Lemma Apointsto_split_std :
+Lemma Apointsto_split :
   forall q1 q2 E1 E2,
   perm_disj q1 q2 ->
   aEntails
-    (Apointsto PTTstd (q1 + q2) E1 E2)
-    (Astar (Apointsto PTTstd q1 E1 E2) (Apointsto PTTstd q2 E1 E2)).
+    (Apointsto (q1 + q2) E1 E2)
+    (Astar (Apointsto q1 E1 E2) (Apointsto q2 E1 E2)).
 Proof.
   intros q1 q2 E1 E2 H1 ph pm s g H2 H3 H4.
   unfold sat in *. destruct H4 as (H4'&H4).
@@ -1369,8 +1339,8 @@ Proof.
   repeat split; auto; [phsolve| |].
   - extensionality l'. unfold phUnion, phUpdate, update.
     desf; [|phcsolve]. by rewrite phcUnion_assoc.
-  - exists pmIden, pm. split; [pmsolve|].
-    split; [by rewrite pmUnion_iden_r|]. split.
+  - exists ghIden, pm. split; [ghsolve|].
+    split; [by rewrite ghUnion_iden_r|]. split.
     + split; [permsolve|].
       unfold phUpdate, update. desf.
     + split; [permsolve|].
@@ -1379,99 +1349,45 @@ Proof.
       by apply phcDisj_union_l with (PHCstd q1 v).
 Qed.
 
-Lemma Apointsto_split_proc :
-  forall q1 q2 E1 E2,
-  perm_disj q1 q2 ->
-  aEntails
-    (Apointsto PTTproc (q1 + q2) E1 E2)
-    (Astar (Apointsto PTTproc q1 E1 E2) (Apointsto PTTproc q2 E1 E2)).
-Proof.
-  intros q1 q2 E1 E2 H1 ph pm s g H2 H3 H4.
-  unfold sat in *. destruct H4 as (H4'&H4).
-  pose (v:=expr_eval E2 s).
-  assert (H5 : phcUnion (PHCproc q1 v) (PHCproc q2 v) = PHCproc (q1 + q2) v). {
-    unfold phcUnion. desf. }
-  assert (H6 : phcDisj (PHCproc q1 v) (PHCproc q2 v)). {
-    red. intuition. }
-  subst v. rewrite <- H5 in H4. clear H5.
-  apply phcLe_diff in H4; vauto; [|phcsolve].
-  destruct H4 as (phc&H4&H5).
-  pose (l:=expr_eval E1 s).
-  pose (v:=expr_eval E2 s).
-  exists (phUpdate ph l (PHCproc q1 v)).
-  exists (phUpdate phIden l (phcUnion (PHCproc q2 v) phc)).
-  repeat split; vauto; [phsolve| |].
-  - extensionality l'. unfold phUnion, phUpdate, update.
-    desf; [|phcsolve]. by rewrite phcUnion_assoc.
-  - exists pmIden, pm.
-    split; [phsolve|].
-    split; [by rewrite pmUnion_iden_r|]. split.
-    + split; [permsolve|].
-      unfold phUpdate, update. desf.
-    + split; [permsolve|].
-      unfold phUpdate, update, phIden. desf.
-      apply phcLe_mono_pos.
-      by apply phcDisj_union_l with (PHCproc q1 v).
-Qed.
 
-Lemma Apointsto_split_act :
-  forall q1 q2 E1 E2,
+Lemma Aguard_split :
+  forall q1 q2 t a,
   perm_disj q1 q2 ->
   aEntails
-    (Apointsto PTTact (q1 + q2) E1 E2)
-    (Astar (Apointsto PTTact q1 E1 E2) (Apointsto PTTact q2 E1 E2)).
+    (Aguard t a (q1 + q2))
+    (Astar (Aguard t a q1) (Aguard t a q2)).
 Proof.
-  intros q1 q2 E1 E2 H1 ph pm s g H2 H3 H4.
+  intros q1 q2 t a H1 ph pm s g H2 H3 H4.
   unfold sat in *. destruct H4 as (H4'&H4).
-  destruct H4 as (v'&H4).
-  pose (v:=expr_eval E2 s).
-  assert (H5 : phcUnion (PHCact q1 v v') (PHCact q2 v v') = PHCact (q1 + q2) v v'). {
-    unfold phcUnion. desf. }
-  assert (H6 : phcDisj (PHCact q1 v v') (PHCact q2 v v')). {
+  (* pose (v:=expr_eval E2 s). *)
+  assert (H5 : ghcUnion (GHCstd q1) (GHCstd q2) = GHCstd (q1 + q2)). {
+    unfold ghcUnion. desf. }
+  assert (H6 : ghcDisj (GHCstd q1) (GHCstd q2)). {
     red. intuition. }
-  subst v. rewrite <- H5 in H4. clear H5.
-  apply phcLe_diff in H4; vauto; [|phcsolve].
-  destruct H4 as (phc&H4&H5).
-  pose (l:=expr_eval E1 s).
-  pose (v:=expr_eval E2 s).
-  exists (phUpdate ph l (PHCact q1 v v')).
-  exists (phUpdate phIden l (phcUnion (PHCact q2 v v') phc)).
-  repeat split; vauto; [phsolve| |].
-  - extensionality l'.
-    unfold phUnion, phUpdate, update.
-    desf; [|phcsolve]. by rewrite phcUnion_assoc.
-  - exists pmIden, pm.
-    split; [pmsolve|].
-    split; [by rewrite pmUnion_iden_r|]. split.
-    + split; [permsolve|].
-      exists v'. unfold phUpdate, update. desf.
-    + split; [permsolve|].
-      exists v'. unfold phUpdate, update, phIden.
-      desf. apply phcLe_mono_pos.
-      by apply phcDisj_union_l with (PHCact q1 v v').
-Qed.
-
-Theorem Apointsto_split :
-  forall q1 q2 E1 E2 t,
-  perm_disj q1 q2 ->
-  aEntails
-    (Apointsto t (q1 + q2) E1 E2)
-    (Astar (Apointsto t q1 E1 E2) (Apointsto t q2 E1 E2)).
-Proof.
-  intros q1 q2 E1 E2 t H. destruct t.
-  - by apply Apointsto_split_std.
-  - by apply Apointsto_split_proc.
-  - by apply Apointsto_split_act.
+  (* subst v. *) rewrite <- H5 in H4. clear H5.
+  apply ghcLe_diff in H4; vauto. 
+  destruct H4 as (ghc&H4&H5).
+  (* pose (l:=expr_eval E1 s).
+  pose (v:=expr_eval E2 s). *)
+  (*exists (ghUpdate pm (GGuard t a) (GHCstd q1)).
+  exists (phUpdate phIden l (phcUnion (PHCstd q2 v) phc)). *)
+  exists phIden, ph. repeat split; auto. phsolve.
+  exists (ghUpdate pm (GGuard t a) (GHCstd q1)). 
+  exists (ghUpdate ghIden (GGuard t a) (ghcUnion (GHCstd q2) ghc)).
+  splits; auto ; [ghsolve | | permsolve | | permsolve |].
+  - extensionality g'. unfold ghUnion, ghUpdate, update. desf. rewrite <- H5. rewrite <- ghcUnion_assoc. vauto. ghcsolve.
+  - unfold ghUpdate, update. desf. 
+  - unfold ghUpdate, update. desf. apply ghcLe_weaken; ghcsolve. 
 Qed.
 
 (** Heap ownership predicates may be merged. *)
 
-Lemma Apointsto_merge_std :
+Lemma Apointsto_merge:
   forall q1 q2 E1 E2,
   perm_disj q1 q2 ->
   aEntails
-    (Astar (Apointsto PTTstd q1 E1 E2) (Apointsto PTTstd q2 E1 E2))
-    (Apointsto PTTstd (q1 + q2) E1 E2).
+    (Astar (Apointsto q1 E1 E2) (Apointsto q2 E1 E2))
+    (Apointsto (q1 + q2) E1 E2).
 Proof.
   unfold aEntails.
   intros q1 q2 E1 E2 D1 ph pm s g V1 V2 SAT.
@@ -1489,541 +1405,6 @@ Proof.
     rewrite phcUnion_comm. by rewrite H3.
   - by apply phDisj_valid_l in D2.
 Qed.
-
-Lemma Apointsto_merge_proc :
-  forall q1 q2 E1 E2,
-  perm_disj q1 q2 ->
-  aEntails
-    (Astar (Apointsto PTTproc q1 E1 E2) (Apointsto PTTproc q2 E1 E2))
-    (Apointsto PTTproc (q1 + q2) E1 E2).
-Proof.
-  unfold aEntails.
-  intros q1 q2 E1 E2 D1 ph pm s g V1 V2 SAT.
-  unfold sat in *.
-  destruct SAT as (ph1&ph2&D2&H1&pm1&pm2&D3&H2&(V3&LE1)&(V4&LE2)).
-  clarify. rewrite <- phUnion_cell.
-  pose (v:=expr_eval E2 s).
-  assert (H6 : PHCproc (q1 + q2) v = phcUnion (PHCproc q1 v) (PHCproc q2 v)). {
-    unfold phcUnion. desf. }
-  subst v. rewrite H6. split; [permsolve|].
-  apply phcLe_compat; vauto.
-  apply phcLe_diff in LE1; auto.
-  - destruct LE1 as (phc&D4&H3).
-    apply phcDisj_union_l with phc; auto; [phcsolve|].
-    rewrite phcUnion_comm. by rewrite H3.
-  - by apply phDisj_valid_l in D2.
-Qed.
-
-Lemma Apointsto_merge_act :
-  forall q1 q2 E1 E2,
-  perm_disj q1 q2 ->
-  aEntails
-    (Astar (Apointsto PTTact q1 E1 E2) (Apointsto PTTact q2 E1 E2))
-    (Apointsto PTTact (q1 + q2) E1 E2).
-Proof.
-  unfold aEntails.
-  intros q1 q2 E1 E2 D1 ph pm s g V1 V2 SAT.
-  unfold sat in *.
-  destruct SAT as (ph1&ph2&D2&H1&pm1&pm2&D3&H2&(V3&LE1)&(V4&LE2)).
-  clarify. rewrite <- phUnion_cell.
-  destruct LE1 as (v1&LE1).
-  destruct LE2 as (v2&LE2).
-  assert (H3 : v1 = v2). {
-  red in D2. red in D2. unfold phcDisj in D2.
-  specialize D2 with (expr_eval E1 s).
-  unfold phcLe in LE1, LE2. repeat desf. }
-  split; [permsolve|]. clarify. exists v2.
-  pose (v:=expr_eval E2 s).
-  assert (H6 : PHCact (q1 + q2) v v2 = phcUnion (PHCact q1 v v2) (PHCact q2 v v2)). {
-    unfold phcUnion. desf. }
-  subst v. rewrite H6.
-  apply phcLe_compat; vauto.
-  apply phcLe_diff in LE1; auto.
-  - destruct LE1 as (phc&D4&H3).
-    apply phcDisj_union_l with phc; auto; [phcsolve|].
-    rewrite phcUnion_comm. by rewrite H3.
-  - by apply phDisj_valid_l in D2.
-Qed.
-
-Theorem Apointsto_merge :
-  forall q1 q2 E1 E2 t,
-  perm_disj q1 q2 ->
-  aEntails
-    (Astar (Apointsto t q1 E1 E2) (Apointsto t q2 E1 E2))
-    (Apointsto t (q1 + q2) E1 E2).
-Proof.
-  intros q1 q2 E1 E2 t H1. destruct t.
-  - by apply Apointsto_merge_std.
-  - by apply Apointsto_merge_proc.
-  - by apply Apointsto_merge_act.
-Qed.
-
-(** Below are the rules for 'process-action' ownership predicates,
-    which allow using such predicates as abbreviations
-    for process- and action ownership predicates *)
-
-Lemma assn_proc_procact_l :
-  forall q E1 E2,
-  q <> 1 ->
-  aEntails (Apointsto_procact q E1 E2) (Apointsto PTTproc q E1 E2).
-Proof.
-  intros q E1 E2 H1 ph pm s g V1 V2 SAT.
-  unfold Apointsto_procact in SAT. desf.
-Qed.
-Lemma assn_proc_procact_r :
-  forall q E1 E2,
-  q <> 1 ->
-  aEntails (Apointsto PTTproc q E1 E2) (Apointsto_procact q E1 E2).
-Proof.
-  intros q E1 E2 H1 ph pm s g V1 V2 SAT.
-  unfold Apointsto_procact. desf.
-Qed.
-Lemma assn_act_procact_l :
-  forall E1 E2,
-  aEntails (Apointsto_procact 1 E1 E2) (Apointsto PTTact 1 E1 E2).
-Proof.
-  intros E1 E2 ph pm s g V1 V2 SAT.
-  unfold Apointsto_procact in SAT. desf.
-Qed.
-Lemma assn_act_procact_r :
-  forall E1 E2,
-  aEntails (Apointsto PTTact 1 E1 E2) (Apointsto_procact 1 E1 E2).
-Proof.
-  intros E1 E2 ph pm s g V1 V2 SAT.
-  unfold Apointsto_procact. desf.
-Qed.
-
-Lemma Aiter_proc_procact_l {T} :
-  forall (xs : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-    (forall x : T, In x xs -> fq x <> 1) ->
-  aEntails (Aiter (ApointstoIter_procact xs fq f1 f2)) (Aiter (ApointstoIter xs fq f1 f2 PTTproc)).
-Proof.
-  induction xs as [|x xs IH]. vauto.
-  intros f1 f2 fq H1 ph pm s g V1 V2 SAT.
-  destruct SAT as (ph1&ph2&D1&H2&pm1&pm2&D2&H3&SAT1&SAT2). vauto.
-  exists ph1, ph2. intuition vauto.
-  exists pm1, pm2. intuition vauto.
-  - apply assn_proc_procact_l; auto; [|phsolve|pmsolve].
-    intro H2. apply H1 with x; vauto.
-  - apply IH; vauto; [|phsolve|pmsolve].
-    intros y H2 H4. apply H1 with y; vauto.
-Qed.
-Lemma Aiter_proc_procact_r {T} :
-  forall (xs : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-    (forall x : T, In x xs -> fq x <> 1) ->
-  aEntails (Aiter (ApointstoIter xs fq f1 f2 PTTproc)) (Aiter (ApointstoIter_procact xs fq f1 f2)).
-Proof.
-  induction xs as [|x xs IH]. vauto.
-  intros f1 f2 fq H1 ph pm s g V1 V2 SAT.
-  destruct SAT as (ph1&ph2&D1&H2&pm1&pm2&D2&H3&SAT1&SAT2). vauto.
-  exists ph1, ph2. intuition vauto.
-  exists pm1, pm2. intuition vauto.
-  - apply assn_proc_procact_r; auto; [|phsolve|pmsolve].
-    intro H2. apply H1 with x; vauto.
-  - apply IH; vauto; [|phsolve|pmsolve].
-    intros y H2 H4. apply H1 with y; vauto.
-Qed.
-Lemma Aiter_act_procact_l {T} :
-  forall (xs : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-    (forall x : T, In x xs -> fq x = 1) ->
-  aEntails (Aiter (ApointstoIter_procact xs fq f1 f2)) (Aiter (ApointstoIter xs fq f1 f2 PTTact)).
-Proof.
-  induction xs as [|x xs IH]. vauto.
-  intros f1 f2 fq H1 ph pm s g V1 V2 SAT.
-  destruct SAT as (ph1&ph2&D1&H2&pm1&pm2&D2&H3&SAT1&SAT2). vauto.
-  exists ph1, ph2. intuition vauto.
-  exists pm1, pm2. intuition vauto.
-  - rewrite H1; vauto. apply assn_act_procact_l; auto.
-    + phsolve.
-    + pmsolve.
-    + rewrite <- H1 with x; vauto.
-  - apply IH; vauto.
-    + intros y H2. apply H1. vauto.
-    + phsolve.
-    + pmsolve.
-Qed.
-Lemma Aiter_act_procact_r {T} :
-  forall (xs : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-    (forall x : T, In x xs -> fq x = 1) ->
-  aEntails (Aiter (ApointstoIter xs fq f1 f2 PTTact)) (Aiter (ApointstoIter_procact xs fq f1 f2)).
-Proof.
-  induction xs as [|x xs IH]. vauto.
-  intros f1 f2 fq H1 ph pm s g V1 V2 SAT.
-  destruct SAT as (ph1&ph2&D1&H2&pm1&pm2&D2&H3&SAT1&SAT2). vauto.
-  exists ph1, ph2. intuition vauto.
-  exists pm1, pm2. intuition vauto.
-  - rewrite H1; vauto. apply assn_act_procact_r; auto.
-    + phsolve.
-    + pmsolve.
-    + rewrite <- H1 with x; vauto.
-  - apply IH; vauto.
-    + intros y H2. apply H1. vauto.
-    + phsolve.
-    + pmsolve.
-Qed.
-
-Theorem ApointstoIter_procact_split {T} :
-  forall (xs ys : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-    (forall x : T, In x xs -> fq x <> 1) ->
-    (forall x : T, In x ys -> fq x = 1) ->
-  aEntails
-    (Aiter (ApointstoIter_procact (xs ++ ys) fq f1 f2))
-    (Astar (Aiter (ApointstoIter xs fq f1 f2 PTTproc)) (Aiter (ApointstoIter ys fq f1 f2 PTTact))).
-Proof.
-  intros xs ys f1 f2 q1 H1 H2 ph pm s g V1 V2 SAT.
-  rewrite <- ApointstoIter_procact_app in SAT.
-  apply Aiter_add_r in SAT; auto.
-  destruct SAT as (ph1&ph2&D1&H3&pm1&pm2&D2&H4&SAT1&SAT2).
-  exists ph1, ph2. intuition vauto.
-  exists pm1, pm2. intuition vauto.
-  - apply Aiter_proc_procact_l; auto.
-    + phsolve.
-    + pmsolve.
-  - apply Aiter_act_procact_l; auto.
-    + phsolve.
-    + pmsolve.
-Qed.
-
-Theorem ApointstoIter_procact_merge {T} :
-  forall (xs ys : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-    (forall x : T, In x xs -> fq x <> 1) ->
-    (forall x : T, In x ys -> fq x = 1) ->
-  aEntails
-    (Astar (Aiter (ApointstoIter xs fq f1 f2 PTTproc)) (Aiter (ApointstoIter ys fq f1 f2 PTTact)))
-    (Aiter (ApointstoIter_procact (xs ++ ys) fq f1 f2)).
-Proof.
-  intros xs ys f1 f2 q1 H1 H2 ph pm s g V1 V2 SAT.
-  destruct SAT as (ph1&ph2&D1&H3&pm1&pm2&D2&H4&SAT1&SAT2).
-  rewrite <- ApointstoIter_procact_app.
-  apply Aiter_add_l; auto.
-  exists ph1, ph2. intuition vauto.
-  exists pm1, pm2. intuition vauto.
-  - apply Aiter_proc_procact_r; auto.
-    + phsolve.
-    + pmsolve.
-  - apply Aiter_act_procact_r; auto.
-    + phsolve.
-    + pmsolve.
-Qed.
-
-Corollary ApointstoIter_procact_partition {T} :
-  forall (xs ys1 ys2 : list T)(f1 f2 : T -> Expr)(fq : T -> Qc),
-  let f := fun x : T => if Qc_eq_dec (fq x) 1 then false else true in
-  partition f xs = (ys1, ys2) ->
-  aEntails
-    (Aiter (ApointstoIter_procact xs fq f1 f2))
-    (Astar (Aiter (ApointstoIter ys1 fq f1 f2 PTTproc)) (Aiter (ApointstoIter ys2 fq f1 f2 PTTact))).
-Proof.
-  intros xs ys1 ys2 f1 f2 fq f H1 ph pm s g V1 V2 SAT.
-  assert (H2 : Permutation xs (ys1 ++ ys2)). {
-    by apply partition_permut with f. }
-  apply sat_procact_iter_permut with (ys:=ys1 ++ ys2) in SAT; vauto.
-  apply ApointstoIter_procact_split; vauto.
-  - intros x H3. apply partition_f_left with (x0:=x) in H1; auto.
-    subst f. simpl in H1. desf.
-  - intros x H3. apply partition_f_right with (x0:=x) in H1; auto.
-    subst f. simpl in H1. desf.
-Qed.
-
-
-(** *** Process ownership predicates *)
-
-(** Process ownership predicates with invalid
-    fractional permissions are meaningless. *)
-
-Theorem assn_proc_valid :
-  forall x q P xs f,
-  ~ perm_valid q -> aEntails (Aproc x q P xs f) Afalse.
-Proof.
-  intros x q P xs f H1 ph pm s g H2 H3 H4.
-  unfold sat in H4.
-  destruct H4 as (c'&H4&H5).
-  apply pmeDisj_valid_l in H4.
-  simpl in H4. contradiction.
-Qed.
-
-(** Processes may always be replaced by bisimilar ones. *)
-
-Theorem assn_proc :
-  forall P1 P2 x q xs f,
-  hbisim P1 P2 ->
-  aEntails (Aproc x q P1 xs f) (Aproc x q P2 xs f).
-Proof.
-  intros P1 P2 x q xs f H ph pm s g H2 H3 H4.
-  unfold sat in *.
-  destruct H4 as (pmv&H4&H5).
-  exists pmv. intuition.
-  pose (F:=expr_eval_map f s).
-  pose (P':=pDehybridise P1 s).
-  transitivity (pmeUnion (PEelem q P' xs F) pmv); auto.
-  subst F P'. by rewrite <- H5, <- H.
-Qed.
-
-(** Processes ownership may always be split. *)
-
-Theorem assn_proc_split :
-  forall q1 q2 x P1 P2 xs f,
-  perm_disj q1 q2 ->
-  aEntails
-    (Aproc x (q1 + q2) (HPpar P1 P2) xs f)
-    (Astar (Aproc x q1 P1 xs f) (Aproc x q2 P2 xs f)).
-Proof.
-  intros q1 q2 x P1 P2 xs f H1 ph pm s g H2 H3 H4.
-  unfold sat in H4.
-  destruct H4 as (pmv&H4&H5).
-  exists phIden, ph. intuition; [phsolve|].
-  exists (pmUpdate pmIden (g x) (PEelem q1 (pDehybridise P1 s) xs (expr_eval_map f s))).
-  exists (pmUpdate pm (g x) (pmeUnion (PEelem q2 (pDehybridise P2 s) xs (expr_eval_map f s)) pmv)).
-  intuition vauto. 
-  - apply pmDisj_upd; auto. 
-    apply pmeDisj_assoc_l; auto.
-    + pmsolve.
-    + unfold pmeUnion. desf.
-  - intro pid.
-    unfold pmUnion, pmUpdate, update.
-    destruct (val_eq_dec (g x) pid); vauto.
-    + rewrite H5. rewrite <- pmeUnion_assoc.
-      unfold pmeUnion. desf.
-    + pmesolve.
-  - exists PEfree. intuition clarify.
-    + apply pmeDisj_free_l.
-      unfold pmeValid.
-      by apply perm_disj_valid_l in H1.
-    + unfold pmUpdate, update. desf.
-  - exists pmv. intuition clarify.
-    apply pmeDisj_union_l with (PEelem q1 (pDehybridise P1 s) xs (expr_eval_map f s)).
-    + unfold pmeDisj. intuition vauto.
-    + unfold pmeUnion. desf.
-    + unfold pmUpdate, update. desf.
-Qed.
-
-(** Processes ownership may always be merged. *)
-
-Theorem assn_proc_merge :
-  forall q1 q2 x P1 P2 xs f,
-  perm_disj q1 q2 ->
-  aEntails
-    (Astar (Aproc x q1 P1 xs f) (Aproc x q2 P2 xs f))
-    (Aproc x (q1 + q2) (HPpar P1 P2) xs f).
-Proof.
-  intros q1 q2 x P1 P2 xs f H1 ph pm s g H2 H3 H4.
-  unfold sat in H4.
-  destruct H4 as (ph1&ph2&D1&H4&pm1&pm2&D2&H5&SAT1&SAT2).
-  destruct SAT1 as (pmv1&S1&S2).
-  destruct SAT2 as (pmv2&S3&S4).
-  exists (pmeUnion pmv1 pmv2).
-  intuition clarify.
-  - simpl (pDehybridise (HPpar P1 P2) s).
-    rewrite <- pmeUnion_elem.
-    apply pmeDisj_compat; vauto.
-    rewrite <- S2, <- S4.
-    by apply D2.
-  - simpl (pDehybridise (HPpar P1 P2) s).
-    rewrite <- pmeUnion_elem.
-    rewrite pmeUnion_compat.
-    rewrite <- S2, <- S4.
-    rewrite pmUnion_elem.
-    by rewrite <- H5.
-Qed.
-
-(** One can always dispose of parts of an abstraction. *)
-
-Theorem assn_proc_weaken :
-  forall q1 q2 x P1 P2 xs f,
-  perm_disj q1 q2 ->
-  aEntails
-    (Aproc x (q1 + q2) (HPpar P1 P2) xs f)
-    (Aproc x q1 P1 xs f).
-Proof.
-  intros q1 q2 x P1 P2 xs f H.
-  transitivity (Astar (Aproc x q1 P1 xs f) (Aproc x q2 P2 xs f)).
-  by apply assn_proc_split.
-  apply assn_weaken.
-Qed.
-
-
-(** *** Bisimilarity *)
-
-(** Any bisimilarity from [hbisim] can be introduced via [Abisim]. *)
-
-Theorem aBisim_hbisim :
-  forall P Q, hbisim P Q -> aEntails Atrue (Abisim P Q).
-Proof. intros P Q H1 ph pm s g H2 H3 H4. vauto. Qed.
-
-(** Bisimilarity is an equivalence relation
-    with respect to separating conjunction and entailment. *)
-
-Theorem aBisim_refl :
-  forall P, aEntails Atrue (Abisim P P).
-Proof. intros. by apply aBisim_hbisim. Qed.
-Theorem aBisim_symm :
-  forall P Q, aEntails (Abisim P Q) (Abisim Q P).
-Proof. intros. red. intros. simpls. by symmetry. Qed.
-Theorem aBisim_trans :
-  forall P Q R, aEntails (Astar (Abisim P Q) (Abisim Q R)) (Abisim P R).
-Proof.
-  intros P Q R. red. intros ph pm s g H1 H2 H3. simpls.
-  destruct H3 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. by transitivity (pDehybridise Q s).
-Qed.
-
-(** Bisimilarity is a congruence for all connectives. *)
-
-Theorem aBisim_seq :
-  forall P1 P2 Q1 Q2,
-  aEntails (Astar (Abisim P1 P2) (Abisim Q1 Q2)) (Abisim (HPseq P1 Q1) (HPseq P2 Q2)).
-Proof.
-  intros P1 P2 Q1 Q2. red.
-  intros ph pm s g H1 H2 H3. simpl in H3.
-  destruct H3 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. simpl. apply bisim_seq; auto.
-Qed.
-
-Theorem aBisim_alt :
-  forall P1 P2 Q1 Q2,
-  aEntails (Astar (Abisim P1 P2) (Abisim Q1 Q2)) (Abisim (HPalt P1 Q1) (HPalt P2 Q2)).
-Proof.
-  intros P1 P2 Q1 Q2. red.
-  intros ph pm s g H1 H2 H3. simpl in H3.
-  destruct H3 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. simpl. apply bisim_alt; auto.
-Qed.
-
-Theorem aBisim_par :
-  forall P1 P2 Q1 Q2,
-  aEntails (Astar (Abisim P1 P2) (Abisim Q1 Q2)) (Abisim (HPpar P1 Q1) (HPpar P2 Q2)).
-Proof.
-  intros P1 P2 Q1 Q2. red.
-  intros ph pm s g H1 H2 H3. simpl in H3.
-  destruct H3 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. simpl. apply bisim_par; auto.
-Qed.
-
-Theorem aBisim_lmerge :
-  forall P1 P2 Q1 Q2,
-  aEntails (Astar (Abisim P1 P2) (Abisim Q1 Q2)) (Abisim (HPlmerge P1 Q1) (HPlmerge P2 Q2)).
-Proof.
-  intros P1 P2 Q1 Q2. red.
-  intros ph pm s g H1 H2 H3. simpl in H3.
-  destruct H3 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. simpl. apply bisim_lmerge; auto.
-Qed.
-
-Theorem aBisim_sum :
-  forall P Q x,
-  ~ hproc_fv P x ->
-  ~ hproc_fv Q x ->
-  aEntails (Abisim P Q) (Abisim (HPsigma x P) (HPsigma x Q)).
-Proof.
-  intros P Q x H1 H2. red. intros ph pm s g H3 H4 H5.
-  simpl in H5. simpl. apply bisim_sum.
-  red. red. intro v. by repeat rewrite hproc_subst_pres.
-Qed.
-
-Corollary aBisim_sum_alt :
-  forall x E P,
-  aEntails Atrue (Abisim (HPsigma x P) (HPalt (hproc_subst x E P) (HPsigma x P))).
-Proof.
-  intros x E P. apply aBisim_hbisim.
-  by apply hbisim_sigma_alt.
-Qed.
-
-Theorem aBisim_cond :
-  forall P Q B1 B2,
-  aEquiv (Aplain B1) (Aplain B2) ->
-  aEntails (Abisim P Q) (Abisim (HPcond B1 P) (HPcond B2 Q)).
-Proof.
-  intros P Q B1 B2 H1 ph pm s g H2 H3 H4.
-  simpls. rewrite H4. clear H4.
-  rewrite Aplain_equiv in H1.
-  by rewrite H1.
-Qed.
-
-Theorem aBisim_cond_true :
-  forall B1 B2 P,
-  aEntails (Aplain B1) (Aplain B2) ->
-  aEntails (Aplain B1) (Abisim (HPcond B2 P) P).
-Proof.
-  intros B1 B2 P H1 ph pm s g H2 H3 H4.
-  simpls. red in H1.
-  apply H1 with ph pm s g in H4; vauto.
-  clear H1. simpl in H4. rewrite H4.
-  clear H4. by apply bisim_cond_true.
-Qed.
-
-Theorem aBisim_cond_false :
-  forall B1 B2 P,
-  aEntails (Aplain B1) (Aplain B2) ->
-  aEntails (Aplain B1) (Abisim (HPcond (Bnot B2) P) HPdelta).
-Proof.
-  intros B1 B2 P H1 ph pm s g H2 H3 H4.
-  simpls. red in H1.
-  apply H1 with ph pm s g in H4; vauto.
-  clear H1. simpl in H4. rewrite H4.
-  clear H4. simpl. by apply bisim_cond_false.
-Qed.
-
-Theorem aBisim_iter :
-  forall P Q,
-  aEntails (Abisim P Q) (Abisim (HPiter P) (HPiter Q)).
-Proof.
-  intros P Q. red. intros ph pm s g H1 H2 H3.
-  simpls. by rewrite H3.
-Qed.
-
-Theorem aBisim_term :
-  forall P, aEntails (Aterm P) (Abisim P (HPalt P HPepsilon)).
-Proof.
-  intros P ph pm s g H1 H2 H3.
-  simpl in H3. simpl.
-  rewrite bisim_alt_comm.
-  by apply bisim_term_intuit.
-Qed.
-
-(** Bisimilarity assertions are duplicable. *)
-
-Theorem aBisim_dupl :
-  forall P Q,
-  aEntails (Abisim P Q) (Astar (Abisim P Q) (Abisim P Q)).
-Proof.
-  intros P Q ph pm s g H1 H2 H3. simpls.
-  exists phIden, ph. intuition; [phsolve|].
-  exists pmIden, pm. intuition. pmsolve.
-Qed.
-
-
-(** *** Termination *)
-
-(** Termination according to [pterm] can be lifted to [Aterm]. *)
-
-Theorem aTerm_intro :
-  forall P, pterm P -> aEntails Atrue (Aterm (pHybridise P)).
-Proof.
-  intros P H1 ph pm s g H2 H3 _.
-  simpl. by rewrite <- pDehybridise_hybridise.
-Qed.
-
-(** Terminating processes can always be replaced by bisimilar ones. *)
-
-Theorem aTerm_bisim :
-  forall P Q,
-  aEntails (Astar (Aterm P) (Abisim P Q)) (Aterm Q).
-Proof.
-  intros P Q ph pm s g H1 H2 H3. simpl in H3.
-  destruct H3 as (ph1&ph2&D1&D2&pm1&pm2&D3&D4&D5&D6).
-  clarify. simpl. by rewrite <- D6.
-Qed.
-
-(** Termination assertions are duplicable. *)
-
-Theorem aTerm_dupl :
-  forall P, aEntails (Aterm P) (Astar (Aterm P) (Aterm P)).
-Proof.
-  intros P ph pm s g H1 H2 H3. simpls.
-  exists phIden, ph. intuition; [phsolve|].
-  exists pmIden, pm. intuition. pmsolve.
-Qed.
-
 
 (** ** Iterated points-to predicates *)
 
